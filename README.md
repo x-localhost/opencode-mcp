@@ -32,7 +32,19 @@ Claude Code ⇄ stdio ⇄ opencode-mcp ⇄ HTTP ⇄ opencode serve ⇄ internal 
 
 ### 1) OpenCode 모델 설정
 
-OpenCode가 사용할 모델 provider를 설정합니다. 설정하지 않으면 OpenCode 기본 provider가 외부 클라우드일 수 있으므로, 사내 gateway 사용 시 먼저 provider를 구성하세요. [배포 체크리스트 §3](docs/deployment-airgap.md#3-내부-openai-compatible-gateway)의 OpenAI-compatible 설정은 다음 형태입니다(실제 gateway URL, model ID, key 환경 변수로 바꾸세요).
+**OpenCode 설정에서 사내 provider만 켜져 있고(`enabled_providers`, 또는 `disabled_providers`로 외부 provider 차단) `model`·`small_model`이 사내 모델로 지정되어 있다면 provider를 새로 구성할 필요는 없습니다(아래 "처음 설정한다면" 부분은 건너뛰세요). 다만 아래 확인 항목은 점검하세요.** managed 모드의 opencode-mcp는 Claude Code를 실행한 사용자 권한으로 `opencode serve`를 직접 띄우고, 이 프로세스는 평소 쓰던 OpenCode 설정(전역·관리형·프로젝트 `opencode.json`, `OPENCODE_CONFIG`)과 OpenCode에 저장된 인증 정보를 사용합니다. 단, 아래 환경 변수 전달 규칙과 에어갭 기본값이 함께 적용됩니다([배포 체크리스트 §5](docs/deployment-airgap.md#5-managedattach-모드)). attach 모드(`OPENCODE_MCP_SERVER_URL`)라면 연결한 서버의 설정을 쓰므로 이 단계는 그 서버 관리자가 맡습니다(모델은 `OPENCODE_MCP_DEFAULT_MODEL`로 고를 수 있습니다).
+
+작업할 저장소에서 `opencode debug config`로 설정을 먼저 확인하세요. 이 명령은 셸 환경 기준이며, 출력에 API 키가 평문으로 나올 수 있으니 공유하지 마세요. TUI에서 모델을 고른 것만으로는 서버의 기본 모델이 되지 않을 수 있고, agent 설정에 `model`이 있으면 설정의 `model`보다 그것이 우선합니다(opencode-mcp가 모델을 보내면 보낸 모델이 우선). `OPENCODE_MCP_DEFAULT_MODEL`을 지정하지 않으면 opencode-mcp는 모델을 보내지 않고 OpenCode의 기본값을 따릅니다. 주 모델을 고정하고 결과에 모델 이름을 표시하려면 `OPENCODE_MCP_DEFAULT_MODEL=<provider>/<model>`을 지정하세요(외부 provider 차단은 `enabled_providers`가 맡습니다). 그 밖에 다음 경우를 확인하세요.
+
+- **API 키를 환경 변수로 넘기는 경우**: opencode-mcp는 Claude Code가 넘겨준 환경만 받습니다. 셸에서는 보이는 키가 IDE나 데스크톱 앱에서 실행한 Claude Code에는 없을 수 있습니다. 이때는 키를 OpenCode에 저장하거나(`opencode providers login`, 별칭 `opencode auth login`; 저장한 키를 쓴다면 provider 설정의 `apiKey` 항목은 빼세요) `claude mcp add`의 `--env`로 전달하세요. 두 방법 모두 키가 파일(OpenCode 사용자 데이터, Claude Code MCP 설정)에 평문으로 남으므로 조직 비밀 관리 정책을 확인하고, 조직 배포는 [배포 체크리스트 §6](docs/deployment-airgap.md#6-claude-code-관리-등록)의 방식을 따르세요. 키를 git에 커밋되는 프로젝트 `.mcp.json`에 적지는 마세요.
+- **조직이 `CLAUDE_CODE_MCP_ALLOWLIST_ENV=1`을 쓰는 경우**: Claude Code는 기본 환경(`HOME`, `PATH`, 일부 `CLAUDE*`)과 서버 `env`만 opencode-mcp에 넘깁니다. 키 변수와, 쓰고 있다면 `OPENCODE_CONFIG`·`OPENCODE_CONFIG_CONTENT`, 사용하는 `XDG_*` 변수, 사내 CA·프록시 변수를 각각 이름으로 서버 `env`에 넣으세요([배포 체크리스트 §6](docs/deployment-airgap.md#6-claude-code-관리-등록)).
+- **변수 이름이 `ANTHROPIC_`, `CLAUDE_` 등으로 시작하는 경우**: Claude Code 자신의 인증 정보가 넘어가지 않도록 opencode-mcp는 `ANTHROPIC_*`, `CLAUDE_*`, `OPENCODE_MCP_*`, `OPENCODE_SERVER_*`, `CLAUDECODE`, `AI_AGENT`를 OpenCode에 전달하지 않으며, 아래 허용 목록에 넣어도 전달되지 않습니다. 사내 gateway의 URL이나 키를 이런 이름(예: `ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`)으로 쓰고 있었다면 URL은 OpenCode 설정의 `provider.<id>.options.baseURL`에 적고, 키는 다른 이름의 변수(예: `INTERNAL_LLM_API_KEY`)로 옮겨 provider 설정의 `apiKey`에서 `{env:INTERNAL_LLM_API_KEY}`로 참조하거나 OpenCode에 저장하세요.
+- **`OPENCODE_MCP_CHILD_ENV_ALLOWLIST`를 설정한 경우**: 목록의 변수와 기본 변수(`PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `TMPDIR`, `SHELL`, `TERM`)만 전달됩니다. 키 변수와, 쓰고 있다면 `OPENCODE_*`(`OPENCODE_CONFIG`, `OPENCODE_CONFIG_CONTENT` 등), `XDG_*`, 사내 CA·프록시 변수(`NODE_EXTRA_CA_CERTS`, `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`)도 목록에 넣으세요(`PREFIX_*` 형식 지원).
+- **설정이 특정 저장소의 `opencode.json`에만 있는 경우**: 그 저장소가 작업 디렉터리일 때 적용됩니다. `cwd`를 주지 않으면 `OPENCODE_MCP_DEFAULT_CWD`, 없으면 `CLAUDE_PROJECT_DIR`(Claude Code 프로젝트 디렉터리), 그것도 없으면 opencode-mcp 프로세스의 현재 디렉터리가 기준입니다. `OPENCODE_DISABLE_PROJECT_CONFIG=1`이면 프로젝트 설정은 무시됩니다.
+
+적용 여부는 [4) 동작 확인](#4-동작-확인)에서 모델 목록으로 확인합니다.
+
+처음 설정한다면 OpenCode가 사용할 모델 provider를 설정합니다. 설정하지 않으면 OpenCode 기본 provider가 외부 클라우드일 수 있으므로, 사내 gateway 사용 시 먼저 provider를 구성하세요. [배포 체크리스트 §3](docs/deployment-airgap.md#3-내부-openai-compatible-gateway)의 OpenAI-compatible 설정은 다음 형태입니다(실제 gateway URL, model ID, key 환경 변수로 바꾸세요).
 
 ```json
 {
@@ -53,7 +65,7 @@ OpenCode가 사용할 모델 provider를 설정합니다. 설정하지 않으면
 }
 ```
 
-Linux managed config 경로는 `/etc/opencode/opencode.json`, macOS는 `/Library/Application Support/opencode` 또는 MDM profile `ai.opencode.managed`입니다. custom 파일은 `OPENCODE_CONFIG`, inline 설정은 `OPENCODE_CONFIG_CONTENT`를 쓸 수 있습니다. 이 모델 ID를 아래 MCP 서버의 `OPENCODE_MCP_DEFAULT_MODEL=corp/coding-model`로 지정하면 기본 모델로 연결됩니다.
+Linux managed config 경로는 `/etc/opencode/opencode.json`, macOS는 `/Library/Application Support/opencode` 또는 MDM profile `ai.opencode.managed`입니다. custom 파일은 `OPENCODE_CONFIG`, inline 설정은 `OPENCODE_CONFIG_CONTENT`를 쓸 수 있습니다. OpenCode의 기본 모델 대신 이 모델로 고정하고 결과에 모델 이름을 표시하려면 [3) Claude Code 등록](#3-claude-code-등록)에서 `--env OPENCODE_MCP_DEFAULT_MODEL=corp/coding-model`을 추가합니다.
 
 ### 2) opencode-mcp 빌드
 
@@ -106,6 +118,8 @@ claude mcp add --transport stdio opencode \
 
 `claude mcp list` 결과에 `opencode`가 있는지 확인하고, Claude Code에서 `/mcp`(Claude Code 문서 확인)로 연결 상태를 봅니다. 이어 Claude에게 “opencode-info로 서버 상태를 보여줘”라고 요청해 `connectionState`와 defaults를 확인합니다. 첫 `opencode-info` 호출 전에는 managed OpenCode 프로세스가 아직 시작되지 않습니다. 첫 호출의 `not_started` 확인은 [e2e 검증 기록](e2e/README.md#f9-v03-feature-scenarios-featurestestmjs-own-run-e2esh-step)에 있습니다.
 
+사내 모델 연결은 Claude에게 “opencode-info로 모델 목록 보여줘”라고 요청해 확인합니다. `models` 결과에 사내 provider의 모델(예: `corp/coding-model`)이 있어야 하고, 외부 provider를 막았다면 다른 provider의 모델은 없어야 합니다. 저장소별 `opencode.json`을 쓴다면 “opencode-info로 <저장소 경로>의 모델 목록 보여줘”처럼 `cwd`를 지정해 확인합니다(그 경로는 허용 루트 안에 있어야 합니다). 이어 짧은 작업을 맡겨 답이 오는지 보고 `opencode-end`로 정리합니다. `OPENCODE_MCP_DEFAULT_MODEL`이나 호출의 `model`을 지정하지 않으면 결과에 사용 모델이 표시되지 않고 `opencode-info`의 `defaults.model`도 `null`입니다. 실제로 호출된 모델은 gateway 로그로 확인하세요. 모델이 없거나 인증 오류가 나면 [1) OpenCode 모델 설정](#1-opencode-모델-설정)의 확인 항목을 점검하세요.
+
 ### 5) 사용 예
 
 Claude Code에 자연어로 요청할 수 있습니다.
@@ -121,7 +135,7 @@ Claude Code에 자연어로 요청할 수 있습니다.
 
 - `OPENCODE_MCP_DEFAULT_SANDBOX`: 기본 `workspace-write`; 검토 전용이면 `read-only`를 권장합니다.
 - `OPENCODE_MCP_ALLOWED_ROOTS`: 허용 작업 루트. 경로는 절대 경로이며 여러 경로는 플랫폼 경로 구분자로 나눕니다.
-- `OPENCODE_MCP_DEFAULT_MODEL`: 기본 모델, `provider/model` 형식.
+- `OPENCODE_MCP_DEFAULT_MODEL`: 기본 모델, `provider/model` 형식. 지정하지 않으면 모델을 보내지 않으므로 OpenCode 기본 모델(agent의 `model`, 없으면 설정의 `model`)을 씁니다.
 - `OPENCODE_MCP_DEFAULT_APPROVAL_POLICY`: `never`(기본값) 또는 `on-request`.
 - `OPENCODE_MCP_MAX_SESSIONS`: 추적 가능한 세션 수, 기본값 256, 최댓값 10000.
 - `OPENCODE_MCP_SERVER_URL`: 기존 OpenCode 서버에 붙이는 attach 모드 URL. 지정하면 기본 모드도 `attach`가 됩니다.
@@ -372,7 +386,7 @@ Claude Code의 기본 tool 호출 hard limit은 100,000,000ms(약 27.8시간)이
 | `CLAUDE_PROJECT_DIR` | 미설정 | 기본 cwd fallback, 지정 시 절대 경로 |
 | `OPENCODE_MCP_ALLOWED_ROOTS` | 기본 cwd | `path.delimiter` 구분 허용 루트; 각 항목은 trim되며 절대 경로여야 함; 명시적으로 설정했는데 유효 항목이 0개면 시작 실패 |
 | `OPENCODE_MCP_REMOTE_PATHS` | `false` | 원격 경로의 local realpath 검사 생략 |
-| `OPENCODE_MCP_DEFAULT_MODEL` | 없음 | 기본 `provider/model`; 설정 시 반드시 `provider/model` 형식이어야 함(아니면 시작 실패) |
+| `OPENCODE_MCP_DEFAULT_MODEL` | 없음(OpenCode 기본 모델 사용) | 기본 `provider/model`; 설정 시 반드시 `provider/model` 형식이어야 함(아니면 시작 실패) |
 | `OPENCODE_MCP_DEFAULT_AGENT` | 없음 | 기본 agent |
 | `OPENCODE_MCP_DEFAULT_SANDBOX` | `workspace-write` | `read-only`, `workspace-write`, `danger-full-access` |
 | `OPENCODE_MCP_DEFAULT_APPROVAL_POLICY` | `never` | `never`, `on-request` |
