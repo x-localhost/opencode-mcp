@@ -1,0 +1,109 @@
+[
+  {
+    "info": {
+      "id": "msg_0ebf6512b0018j3RSqzK9EaDS4",
+      "sessionID": "ses_f1409aee8ffeObqzGxsYIiVcQN",
+      "role": "user",
+      "time": {
+        "created": 1790665183531
+      },
+      "summary": {
+        "diffs": []
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "fake",
+        "modelID": "fake-model"
+      }
+    },
+    "parts": [
+      {
+        "id": "prt_0ebf65131001VKGjjBgucyqiah",
+        "sessionID": "ses_f1409aee8ffeObqzGxsYIiVcQN",
+        "messageID": "msg_0ebf6512b0018j3RSqzK9EaDS4",
+        "type": "text",
+        "text": "RUN_BASH now"
+      }
+    ]
+  },
+  {
+    "info": {
+      "id": "msg_0ebf6513f0013D4NQnle36TOQ8",
+      "sessionID": "ses_f1409aee8ffeObqzGxsYIiVcQN",
+      "role": "assistant",
+      "time": {
+        "created": 1790665183551,
+        "completed": 1790665183955
+      },
+      "parentID": "msg_0ebf6512b0018j3RSqzK9EaDS4",
+      "modelID": "fake-model",
+      "providerID": "fake",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+        "cwd": "/work/proj",
+        "root": "/work/proj"
+      },
+      "cost": 0,
+      "tokens": {
+        "total": 49,
+        "input": 42,
+        "output": 7,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "finish": "tool-calls"
+    },
+    "parts": [
+      {
+        "id": "prt_0ebf651ad001cTlRh4cS1ej0Qe",
+        "sessionID": "ses_f1409aee8ffeObqzGxsYIiVcQN",
+        "messageID": "msg_0ebf6513f0013D4NQnle36TOQ8",
+        "type": "step-start",
+        "snapshot": "0b2a97ec057faa6c958b83112334c50ed0e382c1"
+      },
+      {
+        "id": "prt_0ebf651b100110wFJuwIj3VyhY",
+        "sessionID": "ses_f1409aee8ffeObqzGxsYIiVcQN",
+        "messageID": "msg_0ebf6513f0013D4NQnle36TOQ8",
+        "type": "tool",
+        "callID": "call_fake_5",
+        "tool": "bash",
+        "state": {
+          "status": "error",
+          "input": {
+            "command": "echo fake-bash-ok",
+            "description": "echo"
+          },
+          "error": "The user rejected permission to use this specific tool call.",
+          "time": {
+            "start": 1790665183683,
+            "end": 1790665183850
+          }
+        }
+      },
+      {
+        "id": "prt_0ebf652a1001pw8tKaD5WVjCPg",
+        "sessionID": "ses_f1409aee8ffeObqzGxsYIiVcQN",
+        "messageID": "msg_0ebf6513f0013D4NQnle36TOQ8",
+        "type": "step-finish",
+        "reason": "tool-calls",
+        "snapshot": "0b2a97ec057faa6c958b83112334c50ed0e382c1",
+        "cost": 0,
+        "tokens": {
+          "total": 49,
+          "input": 42,
+          "output": 7,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      }
+    ]
+  }
+]

@@ -1,0 +1,24 @@
+# Example .npmrc for installing opencode-mcp's dependencies through the
+# internal (air-gapped) npm proxy registry. Copy to .npmrc and fill in the real
+# values for your environment; do NOT commit a real .npmrc (it may carry auth
+# tokens or an internal-only hostname).
+#
+# Default registry: route everything through the internal proxy (mirrors npm,
+# so it also resolves unscoped packages like typescript/zod/esbuild).
+registry=https://nexus.example.corp/repository/npm-group/
+
+# If the proxy terminates TLS with an internal CA, either trust it via the
+# system store or point npm at the CA bundle explicitly:
+# cafile=/etc/ssl/certs/corp-ca-bundle.pem
+
+# If the proxy uses a self-signed/internal cert and you cannot add the CA,
+# strict-ssl can be disabled as a last resort (not recommended):
+# strict-ssl=false
+
+# Route this project's own scope (@internal/opencode-mcp) at the same proxy,
+# in case the internal scope is served from a separate hosted repository:
+@internal:registry=https://nexus.example.corp/repository/npm-group/
+
+# If the proxy requires auth, prefer an env-var reference over a literal token
+# so no secret ends up committed:
+# //nexus.example.corp/repository/npm-group/:_authToken=${NPM_TOKEN}

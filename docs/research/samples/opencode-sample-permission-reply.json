@@ -1,0 +1,9 @@
+{
+  "request": {
+    "reply": "once"
+  },
+  "response": {
+    "status": 200,
+    "json": true
+  }
+}

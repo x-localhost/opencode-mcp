@@ -1,0 +1,205 @@
+[
+  {
+    "info": {
+      "id": "msg_0ebf6227a001fOQjclLMvpoxts",
+      "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+      "role": "user",
+      "time": {
+        "created": 1790665171578
+      },
+      "summary": {
+        "diffs": [
+          {
+            "file": "hello.txt",
+            "patch": "Index: hello.txt\n===================================================================\n--- hello.txt\t\n+++ hello.txt\t\n@@ -0,0 +1,1 @@\n+hello from fake llm\n",
+            "additions": 1,
+            "deletions": 0,
+            "status": "added"
+          }
+        ]
+      },
+      "agent": "build",
+      "model": {
+        "providerID": "fake",
+        "modelID": "fake-model"
+      }
+    },
+    "parts": [
+      {
+        "id": "prt_0ebf62281001Q8oQ7O6VLxhper",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf6227a001fOQjclLMvpoxts",
+        "type": "text",
+        "text": "WRITE_FILE please create hello.txt"
+      }
+    ]
+  },
+  {
+    "info": {
+      "id": "msg_0ebf62293001IFv6C7SgJkKl2L",
+      "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+      "role": "assistant",
+      "time": {
+        "created": 1790665171603,
+        "completed": 1790665171943
+      },
+      "parentID": "msg_0ebf6227a001fOQjclLMvpoxts",
+      "modelID": "fake-model",
+      "providerID": "fake",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+        "cwd": "/work/proj",
+        "root": "/work/proj"
+      },
+      "cost": 0,
+      "tokens": {
+        "total": 49,
+        "input": 42,
+        "output": 7,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "finish": "tool-calls"
+    },
+    "parts": [
+      {
+        "id": "prt_0ebf62332001DNBxTaQVn1vaLk",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf62293001IFv6C7SgJkKl2L",
+        "type": "step-start",
+        "snapshot": "bb395e58510a105c8c77997dee7bbdac53bec205"
+      },
+      {
+        "id": "prt_0ebf62336001OAEhIl7rug3VqO",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf62293001IFv6C7SgJkKl2L",
+        "type": "tool",
+        "callID": "call_fake_3",
+        "tool": "write",
+        "state": {
+          "status": "completed",
+          "input": {
+            "filePath": "hello.txt",
+            "content": "hello from fake llm\n"
+          },
+          "output": "Wrote file successfully.",
+          "title": "hello.txt",
+          "metadata": {
+            "diagnostics": {},
+            "filepath": "/work/proj/hello.txt",
+            "exists": false,
+            "truncated": false
+          },
+          "time": {
+            "start": 1790665171787,
+            "end": 1790665171831
+          }
+        }
+      },
+      {
+        "id": "prt_0ebf623bb001O5xkktUnZjll1B",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf62293001IFv6C7SgJkKl2L",
+        "type": "step-finish",
+        "reason": "tool-calls",
+        "snapshot": "0b2a97ec057faa6c958b83112334c50ed0e382c1",
+        "cost": 0,
+        "tokens": {
+          "total": 49,
+          "input": 42,
+          "output": 7,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      },
+      {
+        "id": "prt_0ebf623e4001K93AfmV6RrmK1r",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf62293001IFv6C7SgJkKl2L",
+        "type": "patch",
+        "hash": "bb395e58510a105c8c77997dee7bbdac53bec205",
+        "files": [
+          "/work/proj/hello.txt"
+        ]
+      }
+    ]
+  },
+  {
+    "info": {
+      "id": "msg_0ebf623ed001RPHK2dDaGayn3w",
+      "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+      "role": "assistant",
+      "time": {
+        "created": 1790665171949,
+        "completed": 1790665172164
+      },
+      "parentID": "msg_0ebf6227a001fOQjclLMvpoxts",
+      "modelID": "fake-model",
+      "providerID": "fake",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+        "cwd": "/work/proj",
+        "root": "/work/proj"
+      },
+      "cost": 0,
+      "tokens": {
+        "total": 49,
+        "input": 42,
+        "output": 7,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "finish": "stop"
+    },
+    "parts": [
+      {
+        "id": "prt_0ebf62450001fSa0r74NRtIZpw",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf623ed001RPHK2dDaGayn3w",
+        "type": "step-start",
+        "snapshot": "0b2a97ec057faa6c958b83112334c50ed0e382c1"
+      },
+      {
+        "id": "prt_0ebf62454001qaxzovqCRjiPBt",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf623ed001RPHK2dDaGayn3w",
+        "type": "text",
+        "text": "DONE: Wrote file successfully.",
+        "time": {
+          "start": 1790665172052,
+          "end": 1790665172058
+        }
+      },
+      {
+        "id": "prt_0ebf624a0001i3P3ss5ecJY4N9",
+        "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+        "messageID": "msg_0ebf623ed001RPHK2dDaGayn3w",
+        "type": "step-finish",
+        "reason": "stop",
+        "snapshot": "0b2a97ec057faa6c958b83112334c50ed0e382c1",
+        "cost": 0,
+        "tokens": {
+          "total": 49,
+          "input": 42,
+          "output": 7,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        }
+      }
+    ]
+  }
+]

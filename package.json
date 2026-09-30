@@ -1,0 +1,43 @@
+{
+  "name": "@internal/opencode-mcp",
+  "version": "0.3.0",
+  "description": "Stdio MCP server that lets enterprise Claude Code delegate work to an internal OpenCode instance (delegate, reply, status, cancel, end).",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/x-localhost/opencode-mcp.git"
+  },
+  "homepage": "https://github.com/x-localhost/opencode-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/x-localhost/opencode-mcp/issues"
+  },
+  "bin": {
+    "opencode-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node20 --outfile=dist/opencode-mcp.mjs --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\"",
+    "test": "node --test 'test/**/*.test.ts'",
+    "check": "npm run typecheck && npm test",
+    "prepack": "npm run build && npm run bundle"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.2.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}

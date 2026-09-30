@@ -1,0 +1,23 @@
+{
+  "id": "evt_0ebf62352002piQnnAqRRmXaZc",
+  "type": "permission.asked",
+  "properties": {
+    "id": "per_0ebf62352001OPI24gIdTzBDb5",
+    "sessionID": "ses_f1409dd9bffeJ0F34e4hipAuXj",
+    "permission": "edit",
+    "patterns": [
+      "hello.txt"
+    ],
+    "metadata": {
+      "filepath": "/work/proj/hello.txt",
+      "diff": "Index: /work/proj/hello.txt\n===================================================================\n--- /work/proj/hello.txt\n+++ /work/proj/hello.txt\n@@ -0,0 +1,1 @@\n+hello from fake llm\n"
+    },
+    "always": [
+      "*"
+    ],
+    "tool": {
+      "messageID": "msg_0ebf62293001IFv6C7SgJkKl2L",
+      "callID": "call_fake_3"
+    }
+  }
+}

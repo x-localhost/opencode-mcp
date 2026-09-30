@@ -1,0 +1,1993 @@
+{
+ "3-empty-done": {
+  "directive": "3-empty-done",
+  "llmRequestCount": 224,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 37,
+    "time": "2026-09-30T06:27:24.916Z"
+   },
+   {
+    "seq": 38,
+    "time": "2026-09-30T06:27:25.071Z"
+   },
+   {
+    "seq": 39,
+    "time": "2026-09-30T06:27:25.214Z"
+   },
+   {
+    "seq": 40,
+    "time": "2026-09-30T06:27:25.357Z"
+   },
+   {
+    "seq": 41,
+    "time": "2026-09-30T06:27:25.512Z"
+   },
+   {
+    "seq": 42,
+    "time": "2026-09-30T06:27:25.658Z"
+   },
+   {
+    "seq": 43,
+    "time": "2026-09-30T06:27:25.811Z"
+   },
+   {
+    "seq": 44,
+    "time": "2026-09-30T06:27:25.975Z"
+   },
+   {
+    "seq": 45,
+    "time": "2026-09-30T06:27:26.103Z"
+   },
+   {
+    "seq": 46,
+    "time": "2026-09-30T06:27:26.263Z"
+   }
+  ],
+  "finalAssistant": {
+   "finish": "unknown",
+   "error": {
+    "name": "MessageAbortedError",
+    "data": {
+     "message": "Aborted"
+    }
+   },
+   "timeCompleted": 1790749674923,
+   "textParts": [],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 225,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f0ff1822001InsdZhOJlV1Ufp",
+     "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+     "role": "user",
+     "time": {
+      "created": 1790749644834
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f0ff182a001RPjM5LXpqYw16V",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff1822001InsdZhOJlV1Ufp",
+      "type": "text",
+      "text": "OVERLOAD_EMPTY_DONE please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f0ff18380015lhSKYkp0iGXzI",
+     "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+     "role": "assistant",
+     "time": {
+      "created": 1790749644856,
+      "completed": 1790749645007
+     },
+     "parentID": "msg_0f0ff1822001InsdZhOJlV1Ufp",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "unknown"
+    },
+    "parts": [
+     {
+      "id": "prt_0f0ff1882001TjkHsdLX0XexR1",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff18380015lhSKYkp0iGXzI",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f0ff18a30012CsLB7TOAFq36w",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff18380015lhSKYkp0iGXzI",
+      "type": "step-finish",
+      "reason": "unknown",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f0ff18d3001pyoY8ZXk1KR9Kn",
+     "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+     "role": "assistant",
+     "time": {
+      "created": 1790749645011,
+      "completed": 1790749645149
+     },
+     "parentID": "msg_0f0ff1822001InsdZhOJlV1Ufp",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "unknown"
+    },
+    "parts": [
+     {
+      "id": "prt_0f0ff191c001XXYfm5j3mipM9W",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff18d3001pyoY8ZXk1KR9Kn",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f0ff193b0019wC9u1Lf5WwzjO",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff18d3001pyoY8ZXk1KR9Kn",
+      "type": "step-finish",
+      "reason": "unknown",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f0ff1961001cuBhIgUx0n0cGi",
+     "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+     "role": "assistant",
+     "time": {
+      "created": 1790749645153,
+      "completed": 1790749645295
+     },
+     "parentID": "msg_0f0ff1822001InsdZhOJlV1Ufp",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "unknown"
+    },
+    "parts": [
+     {
+      "id": "prt_0f0ff19ae001jjMzpi8GGuP5ub",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff1961001cuBhIgUx0n0cGi",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f0ff19cc001d8f1bal0PjXmsl",
+      "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+      "messageID": "msg_0f0ff1961001cuBhIgUx0n0cGi",
+      "type": "step-finish",
+      "reason": "unknown",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f0ff8d19001B5T6rfhB7r6cGY",
+    "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+    "role": "assistant",
+    "time": {
+     "created": 1790749674777,
+     "completed": 1790749674923
+    },
+    "error": {
+     "name": "MessageAbortedError",
+     "data": {
+      "message": "Aborted"
+     }
+    },
+    "parentID": "msg_0f0ff1822001InsdZhOJlV1Ufp",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "unknown"
+   },
+   "parts": [
+    {
+     "id": "prt_0f0ff8d54001kx5k3RY1Idgf79",
+     "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+     "messageID": "msg_0f0ff8d19001B5T6rfhB7r6cGY",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    },
+    {
+     "id": "prt_0f0ff8d74001tPUJtuB9z10VbL",
+     "sessionID": "ses_f0f00e809ffe0fPpTYdvOoR61S",
+     "messageID": "msg_0f0ff8d19001B5T6rfhB7r6cGY",
+     "type": "step-finish",
+     "reason": "unknown",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "8-html-body": {
+  "directive": "8-html-body",
+  "llmRequestCount": 624,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 520,
+    "time": "2026-09-30T06:30:43.311Z"
+   },
+   {
+    "seq": 521,
+    "time": "2026-09-30T06:30:43.434Z"
+   },
+   {
+    "seq": 522,
+    "time": "2026-09-30T06:30:43.572Z"
+   },
+   {
+    "seq": 523,
+    "time": "2026-09-30T06:30:43.713Z"
+   },
+   {
+    "seq": 524,
+    "time": "2026-09-30T06:30:43.824Z"
+   },
+   {
+    "seq": 525,
+    "time": "2026-09-30T06:30:43.946Z"
+   },
+   {
+    "seq": 526,
+    "time": "2026-09-30T06:30:44.063Z"
+   },
+   {
+    "seq": 527,
+    "time": "2026-09-30T06:30:44.182Z"
+   },
+   {
+    "seq": 528,
+    "time": "2026-09-30T06:30:44.293Z"
+   },
+   {
+    "seq": 529,
+    "time": "2026-09-30T06:30:44.432Z"
+   }
+  ],
+  "finalAssistant": {
+   "error": {
+    "name": "MessageAbortedError",
+    "data": {
+     "message": "Aborted"
+    }
+   },
+   "timeCompleted": 1790749933407,
+   "textParts": [],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 625,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f1021f2e001IFFP8KDckFbuuB",
+     "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+     "role": "user",
+     "time": {
+      "created": 1790749843246
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f1021f31001ffnddVZgO65Deh",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f1021f2e001IFFP8KDckFbuuB",
+      "type": "text",
+      "text": "OVERLOAD_HTML_BODY please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f1021f39001urqIBbwB26oOOD",
+     "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+     "role": "assistant",
+     "time": {
+      "created": 1790749843257,
+      "completed": 1790749843376
+     },
+     "parentID": "msg_0f1021f2e001IFFP8KDckFbuuB",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "unknown"
+    },
+    "parts": [
+     {
+      "id": "prt_0f1021f7a001bozB0F3ULJUpXc",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f1021f39001urqIBbwB26oOOD",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f1021f98001tB0IOt8pIwzv0u",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f1021f39001urqIBbwB26oOOD",
+      "type": "step-finish",
+      "reason": "unknown",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f1021fb50012UuRP5bAwQaC2M",
+     "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+     "role": "assistant",
+     "time": {
+      "created": 1790749843381,
+      "completed": 1790749843499
+     },
+     "parentID": "msg_0f1021f2e001IFFP8KDckFbuuB",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "unknown"
+    },
+    "parts": [
+     {
+      "id": "prt_0f1021fec001lM5Muxg4tI17YN",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f1021fb50012UuRP5bAwQaC2M",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f102200d001og0N3qnXvENI7x",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f1021fb50012UuRP5bAwQaC2M",
+      "type": "step-finish",
+      "reason": "unknown",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f102202e001HxfDjNuqKHONS0",
+     "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+     "role": "assistant",
+     "time": {
+      "created": 1790749843502,
+      "completed": 1790749843638
+     },
+     "parentID": "msg_0f1021f2e001IFFP8KDckFbuuB",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "unknown"
+    },
+    "parts": [
+     {
+      "id": "prt_0f1022076001TxE2yKNJ2AtbP7",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f102202e001HxfDjNuqKHONS0",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f1022098001fWCtF3aXfHL9e3",
+      "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+      "messageID": "msg_0f102202e001HxfDjNuqKHONS0",
+      "type": "step-finish",
+      "reason": "unknown",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f1037ee6001XSaSKEJH3camXv",
+    "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+    "role": "assistant",
+    "time": {
+     "created": 1790749933286,
+     "completed": 1790749933407
+    },
+    "error": {
+     "name": "MessageAbortedError",
+     "data": {
+      "message": "Aborted"
+     }
+    },
+    "parentID": "msg_0f1021f2e001IFFP8KDckFbuuB",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   },
+   "parts": [
+    {
+     "id": "prt_0f1037f380019w85UbtmYloPr3",
+     "sessionID": "ses_f0efde0d9ffe4tnA6aFvcdWWbf",
+     "messageID": "msg_0f1037ee6001XSaSKEJH3camXv",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "9-bad-tool-json": {
+  "directive": "9-bad-tool-json",
+  "llmRequestCount": 124,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 1588,
+    "time": "2026-09-30T06:33:45.380Z"
+   },
+   {
+    "seq": 1589,
+    "time": "2026-09-30T06:33:45.611Z"
+   },
+   {
+    "seq": 1590,
+    "time": "2026-09-30T06:33:45.953Z"
+   },
+   {
+    "seq": 1591,
+    "time": "2026-09-30T06:33:46.175Z"
+   },
+   {
+    "seq": 1592,
+    "time": "2026-09-30T06:33:46.364Z"
+   },
+   {
+    "seq": 1593,
+    "time": "2026-09-30T06:33:46.511Z"
+   },
+   {
+    "seq": 1594,
+    "time": "2026-09-30T06:33:46.686Z"
+   },
+   {
+    "seq": 1595,
+    "time": "2026-09-30T06:33:46.891Z"
+   },
+   {
+    "seq": 1596,
+    "time": "2026-09-30T06:33:47.098Z"
+   },
+   {
+    "seq": 1597,
+    "time": "2026-09-30T06:33:47.293Z"
+   }
+  ],
+  "finalAssistant": {
+   "finish": "tool-calls",
+   "error": {
+    "name": "MessageAbortedError",
+    "data": {
+     "message": "Aborted"
+    }
+   },
+   "timeCompleted": 1790750055561,
+   "textParts": [],
+   "toolParts": [
+    {
+     "tool": "invalid",
+     "status": "completed"
+    }
+   ]
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 125,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f104e655001yR2pwhAqYezs7V",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "role": "user",
+     "time": {
+      "created": 1790750025301
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f104e658001f73PRjC6AMIxRk",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e655001yR2pwhAqYezs7V",
+      "type": "text",
+      "text": "OVERLOAD_BAD_TOOL_JSON please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f104e66b0018qw5e5CIGMR1oS",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "role": "assistant",
+     "time": {
+      "created": 1790750025323,
+      "completed": 1790750025510
+     },
+     "parentID": "msg_0f104e655001yR2pwhAqYezs7V",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "tool-calls"
+    },
+    "parts": [
+     {
+      "id": "prt_0f104e6b0001m2xjwmFhNMb4LH",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e66b0018qw5e5CIGMR1oS",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f104e6b40015u3CXQdEzBn31S",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e66b0018qw5e5CIGMR1oS",
+      "type": "tool",
+      "callID": "call_fake_1588",
+      "tool": "invalid",
+      "state": {
+       "status": "completed",
+       "input": {
+        "tool": "bash",
+        "error": "Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string"
+       },
+       "output": "The arguments provided to the tool are invalid: Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string",
+       "title": "Invalid Tool",
+       "metadata": {
+        "truncated": false
+       },
+       "time": {
+        "start": 1790750025414,
+        "end": 1790750025419
+       }
+      }
+     },
+     {
+      "id": "prt_0f104e6ff001fnxwcmr3ZBT68x",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e66b0018qw5e5CIGMR1oS",
+      "type": "step-finish",
+      "reason": "tool-calls",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f104e72a001mZroGKsuCIi2Bp",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "role": "assistant",
+     "time": {
+      "created": 1790750025514,
+      "completed": 1790750025892
+     },
+     "parentID": "msg_0f104e655001yR2pwhAqYezs7V",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "tool-calls"
+    },
+    "parts": [
+     {
+      "id": "prt_0f104e797001XaRBAZAujZvpL6",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e72a001mZroGKsuCIi2Bp",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f104e799001etonnPv5amkxKO",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e72a001mZroGKsuCIi2Bp",
+      "type": "tool",
+      "callID": "call_fake_1589",
+      "tool": "invalid",
+      "state": {
+       "status": "completed",
+       "input": {
+        "tool": "bash",
+        "error": "Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string"
+       },
+       "output": "The arguments provided to the tool are invalid: Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string",
+       "title": "Invalid Tool",
+       "metadata": {
+        "truncated": false
+       },
+       "time": {
+        "start": 1790750025631,
+        "end": 1790750025635
+       }
+      }
+     },
+     {
+      "id": "prt_0f104e828001fp37qW9c7g4mjr",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e72a001mZroGKsuCIi2Bp",
+      "type": "step-finish",
+      "reason": "tool-calls",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f104e8a7001cENay0t2Y4vXsc",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "role": "assistant",
+     "time": {
+      "created": 1790750025895,
+      "completed": 1790750026065
+     },
+     "parentID": "msg_0f104e655001yR2pwhAqYezs7V",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "tool-calls"
+    },
+    "parts": [
+     {
+      "id": "prt_0f104e8ed001SMd0xU4aIVpWMb",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e8a7001cENay0t2Y4vXsc",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f104e8ef001qVrQP9yD7mvAAJ",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e8a7001cENay0t2Y4vXsc",
+      "type": "tool",
+      "callID": "call_fake_1590",
+      "tool": "invalid",
+      "state": {
+       "status": "completed",
+       "input": {
+        "tool": "bash",
+        "error": "Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string"
+       },
+       "output": "The arguments provided to the tool are invalid: Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string",
+       "title": "Invalid Tool",
+       "metadata": {
+        "truncated": false
+       },
+       "time": {
+        "start": 1790750025974,
+        "end": 1790750025980
+       }
+      }
+     },
+     {
+      "id": "prt_0f104e9290017toYy9Ml5WZRGX",
+      "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+      "messageID": "msg_0f104e8a7001cENay0t2Y4vXsc",
+      "type": "step-finish",
+      "reason": "tool-calls",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f10559d5001pZ4LK2UV9JFPPH",
+    "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+    "role": "assistant",
+    "time": {
+     "created": 1790750054869,
+     "completed": 1790750055561
+    },
+    "error": {
+     "name": "MessageAbortedError",
+     "data": {
+      "message": "Aborted"
+     }
+    },
+    "parentID": "msg_0f104e655001yR2pwhAqYezs7V",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "tool-calls"
+   },
+   "parts": [
+    {
+     "id": "prt_0f1055b21001HTA5vTh8Nc5OZZ",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "messageID": "msg_0f10559d5001pZ4LK2UV9JFPPH",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    },
+    {
+     "id": "prt_0f1055b27001H9631YUZQ7NzqA",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "messageID": "msg_0f10559d5001pZ4LK2UV9JFPPH",
+     "type": "tool",
+     "callID": "call_fake_1711",
+     "tool": "invalid",
+     "state": {
+      "status": "completed",
+      "input": {
+       "tool": "bash",
+       "error": "Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string"
+      },
+      "output": "The arguments provided to the tool are invalid: Invalid input for tool bash: JSON parsing failed: Text: {\"command\":\"echo \\\"unterminated string, no closing brace.\nError message: JSON Parse error: Unterminated string",
+      "title": "Invalid Tool",
+      "metadata": {
+       "truncated": false
+      },
+      "time": {
+       "start": 1790750055219,
+       "end": 1790750055226
+      }
+     }
+    },
+    {
+     "id": "prt_0f1055bbd001e2Xo8zQPmLTey6",
+     "sessionID": "ses_f0efb19b1ffewVnZhorqZebJRW",
+     "messageID": "msg_0f10559d5001pZ4LK2UV9JFPPH",
+     "type": "step-finish",
+     "reason": "tool-calls",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "4-empty-stop": {
+  "directive": "4-empty-stop",
+  "llmRequestCount": 1,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 498,
+    "time": "2026-09-30T06:28:26.602Z"
+   }
+  ],
+  "finalAssistant": {
+   "finish": "stop",
+   "timeCompleted": 1790749706687,
+   "textParts": [],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 2,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f1000925001WJeo26IsdB4lXW",
+     "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+     "role": "user",
+     "time": {
+      "created": 1790749706533
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f100092a001vqpePWnr90mqRA",
+      "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+      "messageID": "msg_0f1000925001WJeo26IsdB4lXW",
+      "type": "text",
+      "text": "OVERLOAD_EMPTY_STOP please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f1000936001MrNT2YXRMxPL9w",
+     "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+     "role": "assistant",
+     "time": {
+      "created": 1790749706550,
+      "completed": 1790749706687
+     },
+     "parentID": "msg_0f1000925001WJeo26IsdB4lXW",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "stop"
+    },
+    "parts": [
+     {
+      "id": "prt_0f100097a001gJ2nC9mbQTDAFO",
+      "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+      "messageID": "msg_0f1000936001MrNT2YXRMxPL9w",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f1000998001FrhUpGNbuSzVUF",
+      "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+      "messageID": "msg_0f1000936001MrNT2YXRMxPL9w",
+      "type": "step-finish",
+      "reason": "stop",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f1000936001MrNT2YXRMxPL9w",
+    "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+    "role": "assistant",
+    "time": {
+     "created": 1790749706550,
+     "completed": 1790749706687
+    },
+    "parentID": "msg_0f1000925001WJeo26IsdB4lXW",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "stop"
+   },
+   "parts": [
+    {
+     "id": "prt_0f100097a001gJ2nC9mbQTDAFO",
+     "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+     "messageID": "msg_0f1000936001MrNT2YXRMxPL9w",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    },
+    {
+     "id": "prt_0f1000998001FrhUpGNbuSzVUF",
+     "sessionID": "ses_f0efff6f7ffeR7XWcTKGc48bhn",
+     "messageID": "msg_0f1000936001MrNT2YXRMxPL9w",
+     "type": "step-finish",
+     "reason": "stop",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "5-whitespace": {
+  "directive": "5-whitespace",
+  "llmRequestCount": 1,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 501,
+    "time": "2026-09-30T06:28:28.404Z"
+   }
+  ],
+  "finalAssistant": {
+   "finish": "stop",
+   "timeCompleted": 1790749708489,
+   "textParts": [
+    "   \n\t  "
+   ],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 2,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f100102b0018M1hLQ1qTCFqpa",
+     "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+     "role": "user",
+     "time": {
+      "created": 1790749708331
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f1001033001IWVCW12aIT6DdJ",
+      "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+      "messageID": "msg_0f100102b0018M1hLQ1qTCFqpa",
+      "type": "text",
+      "text": "OVERLOAD_WHITESPACE please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f1001040001irMwvIU49VgI9P",
+     "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+     "role": "assistant",
+     "time": {
+      "created": 1790749708352,
+      "completed": 1790749708489
+     },
+     "parentID": "msg_0f100102b0018M1hLQ1qTCFqpa",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "stop"
+    },
+    "parts": [
+     {
+      "id": "prt_0f1001075001sy7eYFD5zFz67M",
+      "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+      "messageID": "msg_0f1001040001irMwvIU49VgI9P",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f1001086001tJLncIMN93oaf6",
+      "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+      "messageID": "msg_0f1001040001irMwvIU49VgI9P",
+      "type": "text",
+      "text": "   \n\t  ",
+      "time": {
+       "start": 1790749708422,
+       "end": 1790749708425
+      }
+     },
+     {
+      "id": "prt_0f10010ac001pmDd6Z4rQ76R21",
+      "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+      "messageID": "msg_0f1001040001irMwvIU49VgI9P",
+      "type": "step-finish",
+      "reason": "stop",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f1001040001irMwvIU49VgI9P",
+    "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+    "role": "assistant",
+    "time": {
+     "created": 1790749708352,
+     "completed": 1790749708489
+    },
+    "parentID": "msg_0f100102b0018M1hLQ1qTCFqpa",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "stop"
+   },
+   "parts": [
+    {
+     "id": "prt_0f1001075001sy7eYFD5zFz67M",
+     "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+     "messageID": "msg_0f1001040001irMwvIU49VgI9P",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    },
+    {
+     "id": "prt_0f1001086001tJLncIMN93oaf6",
+     "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+     "messageID": "msg_0f1001040001irMwvIU49VgI9P",
+     "type": "text",
+     "text": "   \n\t  ",
+     "time": {
+      "start": 1790749708422,
+      "end": 1790749708425
+     }
+    },
+    {
+     "id": "prt_0f10010ac001pmDd6Z4rQ76R21",
+     "sessionID": "ses_f0effefe8ffebSmmjr3EOkGLO1",
+     "messageID": "msg_0f1001040001irMwvIU49VgI9P",
+     "type": "step-finish",
+     "reason": "stop",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "11-finish-length": {
+  "directive": "11-finish-length",
+  "llmRequestCount": 1,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 1811,
+    "time": "2026-09-30T06:36:09.815Z"
+   }
+  ],
+  "finalAssistant": {
+   "finish": "length",
+   "timeCompleted": 1790750169911,
+   "textParts": [
+    "This answer got cut off by the token lim"
+   ],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 2,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f1071a8e0017d01kZBp2wjbq4",
+     "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+     "role": "user",
+     "time": {
+      "created": 1790750169742
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f1071a92001Znii33kQM0KFjR",
+      "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+      "messageID": "msg_0f1071a8e0017d01kZBp2wjbq4",
+      "type": "text",
+      "text": "OVERLOAD_FINISH_LENGTH please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+     "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+     "role": "assistant",
+     "time": {
+      "created": 1790750169757,
+      "completed": 1790750169911
+     },
+     "parentID": "msg_0f1071a8e0017d01kZBp2wjbq4",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "finish": "length"
+    },
+    "parts": [
+     {
+      "id": "prt_0f1071ae6001QNByiHbFrbtEqE",
+      "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+      "messageID": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     },
+     {
+      "id": "prt_0f1071ae9001eIWvh2eLlhElYI",
+      "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+      "messageID": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+      "type": "text",
+      "text": "This answer got cut off by the token lim",
+      "time": {
+       "start": 1790750169833,
+       "end": 1790750169848
+      }
+     },
+     {
+      "id": "prt_0f1071b18001A0Juwgzk6sEYoC",
+      "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+      "messageID": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+      "type": "step-finish",
+      "reason": "length",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      }
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+    "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+    "role": "assistant",
+    "time": {
+     "created": 1790750169757,
+     "completed": 1790750169911
+    },
+    "parentID": "msg_0f1071a8e0017d01kZBp2wjbq4",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "finish": "length"
+   },
+   "parts": [
+    {
+     "id": "prt_0f1071ae6001QNByiHbFrbtEqE",
+     "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+     "messageID": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    },
+    {
+     "id": "prt_0f1071ae9001eIWvh2eLlhElYI",
+     "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+     "messageID": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+     "type": "text",
+     "text": "This answer got cut off by the token lim",
+     "time": {
+      "start": 1790750169833,
+      "end": 1790750169848
+     }
+    },
+    {
+     "id": "prt_0f1071b18001A0Juwgzk6sEYoC",
+     "sessionID": "ses_f0ef8e580ffe10a0GTzbBtHSSR",
+     "messageID": "msg_0f1071a9d001qRzVEYjJhtMSVr",
+     "type": "step-finish",
+     "reason": "length",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "7-malformed-sse": {
+  "directive": "7-malformed-sse",
+  "llmRequestCount": 1,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 517,
+    "time": "2026-09-30T06:30:41.590Z"
+   }
+  ],
+  "finalAssistant": {
+   "error": {
+    "name": "UnknownError",
+    "data": {
+     "message": "JSON parsing failed: Text: {this is not json,,, }}}.\nError message: JSON Parse error: Expected '}'"
+    }
+   },
+   "timeCompleted": 1790749841672,
+   "textParts": [],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [],
+   "partRetries": []
+  },
+  "messageCount": 2,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f1021875001S2OZaPP89hzKPL",
+     "sessionID": "ses_f0efde7baffe1vM05eKsxU4hci",
+     "role": "user",
+     "time": {
+      "created": 1790749841525
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f102187b0018JMMrsOGLM6d66",
+      "sessionID": "ses_f0efde7baffe1vM05eKsxU4hci",
+      "messageID": "msg_0f1021875001S2OZaPP89hzKPL",
+      "type": "text",
+      "text": "OVERLOAD_MALFORMED_SSE please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f1021893001F18U7VIvpBB0Q6",
+     "sessionID": "ses_f0efde7baffe1vM05eKsxU4hci",
+     "role": "assistant",
+     "time": {
+      "created": 1790749841555,
+      "completed": 1790749841672
+     },
+     "error": {
+      "name": "UnknownError",
+      "data": {
+       "message": "JSON parsing failed: Text: {this is not json,,, }}}.\nError message: JSON Parse error: Expected '}'"
+      }
+     },
+     "parentID": "msg_0f1021875001S2OZaPP89hzKPL",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f10218e0001NKa76jX5ZVvO4C",
+      "sessionID": "ses_f0efde7baffe1vM05eKsxU4hci",
+      "messageID": "msg_0f1021893001F18U7VIvpBB0Q6",
+      "type": "step-start",
+      "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+     }
+    ]
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f1021893001F18U7VIvpBB0Q6",
+    "sessionID": "ses_f0efde7baffe1vM05eKsxU4hci",
+    "role": "assistant",
+    "time": {
+     "created": 1790749841555,
+     "completed": 1790749841672
+    },
+    "error": {
+     "name": "UnknownError",
+     "data": {
+      "message": "JSON parsing failed: Text: {this is not json,,, }}}.\nError message: JSON Parse error: Expected '}'"
+     }
+    },
+    "parentID": "msg_0f1021875001S2OZaPP89hzKPL",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   },
+   "parts": [
+    {
+     "id": "prt_0f10218e0001NKa76jX5ZVvO4C",
+     "sessionID": "ses_f0efde7baffe1vM05eKsxU4hci",
+     "messageID": "msg_0f1021893001F18U7VIvpBB0Q6",
+     "type": "step-start",
+     "snapshot": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    }
+   ]
+  },
+  "firstEvents": []
+ },
+ "1b-429-always": {
+  "directive": "1b-429-always",
+  "llmRequestCount": 6,
+  "firstLlmTimingsMs": [
+   {
+    "seq": 6,
+    "time": "2026-09-30T06:24:35.519Z"
+   },
+   {
+    "seq": 7,
+    "time": "2026-09-30T06:24:37.538Z"
+   },
+   {
+    "seq": 8,
+    "time": "2026-09-30T06:24:39.550Z"
+   },
+   {
+    "seq": 9,
+    "time": "2026-09-30T06:24:41.564Z"
+   },
+   {
+    "seq": 10,
+    "time": "2026-09-30T06:24:43.614Z"
+   },
+   {
+    "seq": 11,
+    "time": "2026-09-30T06:24:45.681Z"
+   }
+  ],
+  "finalAssistant": {
+   "error": {
+    "name": "APIError",
+    "data": {
+     "message": "Too Many Requests: {\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+     "statusCode": 429,
+     "isRetryable": true,
+     "responseHeaders": {
+      "connection": "keep-alive",
+      "content-type": "application/json",
+      "date": "Wed, 30 Sep 2026 06:24:45 GMT",
+      "keep-alive": "timeout=5",
+      "retry-after": "2",
+      "transfer-encoding": "chunked"
+     },
+     "responseBody": "{\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+     "metadata": {
+      "url": "http://127.0.0.1:38559/v1/chat/completions"
+     }
+    }
+   },
+   "timeCompleted": 1790749485737,
+   "textParts": [],
+   "toolParts": []
+  },
+  "sessionStatus": {},
+  "retryEvidence": {
+   "statusRetries": [
+    {
+     "t": 1790749475531,
+     "type": "retry",
+     "attempt": 1,
+     "message": "Too Many Requests: {\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+     "next": 1790749477530
+    },
+    {
+     "t": 1790749477541,
+     "type": "retry",
+     "attempt": 2,
+     "message": "Too Many Requests: {\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+     "next": 1790749479540
+    },
+    {
+     "t": 1790749479553,
+     "type": "retry",
+     "attempt": 3,
+     "message": "Too Many Requests: {\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+     "next": 1790749481552
+    }
+   ],
+   "partRetries": []
+  },
+  "messageCount": 2,
+  "firstMessages": [
+   {
+    "info": {
+     "id": "msg_0f0fc8260001mSdHud3DiUR8S7",
+     "sessionID": "ses_f0f037db0ffek4ZAqZBaB67kyB",
+     "role": "user",
+     "time": {
+      "created": 1790749475425
+     },
+     "summary": {
+      "diffs": []
+     },
+     "agent": "build",
+     "model": {
+      "providerID": "fake",
+      "modelID": "fake-model"
+     }
+    },
+    "parts": [
+     {
+      "id": "prt_0f0fc8266001Ejze75nYPmz2Tt",
+      "sessionID": "ses_f0f037db0ffek4ZAqZBaB67kyB",
+      "messageID": "msg_0f0fc8260001mSdHud3DiUR8S7",
+      "type": "text",
+      "text": "OVERLOAD_429_ALWAYS please"
+     }
+    ]
+   },
+   {
+    "info": {
+     "id": "msg_0f0fc8272001YRAny2LLbcmqPM",
+     "sessionID": "ses_f0f037db0ffek4ZAqZBaB67kyB",
+     "role": "assistant",
+     "time": {
+      "created": 1790749475443,
+      "completed": 1790749485737
+     },
+     "error": {
+      "name": "APIError",
+      "data": {
+       "message": "Too Many Requests: {\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+       "statusCode": 429,
+       "isRetryable": true,
+       "responseHeaders": {
+        "connection": "keep-alive",
+        "content-type": "application/json",
+        "date": "Wed, 30 Sep 2026 06:24:45 GMT",
+        "keep-alive": "timeout=5",
+        "retry-after": "2",
+        "transfer-encoding": "chunked"
+       },
+       "responseBody": "{\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+       "metadata": {
+        "url": "http://127.0.0.1:38559/v1/chat/completions"
+       }
+      }
+     },
+     "parentID": "msg_0f0fc8260001mSdHud3DiUR8S7",
+     "modelID": "fake-model",
+     "providerID": "fake",
+     "mode": "build",
+     "agent": "build",
+     "path": {
+      "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+      "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     }
+    },
+    "parts": []
+   }
+  ],
+  "lastMessage": {
+   "info": {
+    "id": "msg_0f0fc8272001YRAny2LLbcmqPM",
+    "sessionID": "ses_f0f037db0ffek4ZAqZBaB67kyB",
+    "role": "assistant",
+    "time": {
+     "created": 1790749475443,
+     "completed": 1790749485737
+    },
+    "error": {
+     "name": "APIError",
+     "data": {
+      "message": "Too Many Requests: {\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+      "statusCode": 429,
+      "isRetryable": true,
+      "responseHeaders": {
+       "connection": "keep-alive",
+       "content-type": "application/json",
+       "date": "Wed, 30 Sep 2026 06:24:45 GMT",
+       "keep-alive": "timeout=5",
+       "retry-after": "2",
+       "transfer-encoding": "chunked"
+      },
+      "responseBody": "{\"error\":{\"message\":\"Too Many Requests\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}",
+      "metadata": {
+       "url": "http://127.0.0.1:38559/v1/chat/completions"
+      }
+     }
+    },
+    "parentID": "msg_0f0fc8260001mSdHud3DiUR8S7",
+    "modelID": "fake-model",
+    "providerID": "fake",
+    "mode": "build",
+    "agent": "build",
+    "path": {
+     "cwd": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx",
+     "root": "/work/ocmcp-e2e-probe-overload-1-1-eIOvNx"
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    }
+   },
+   "parts": []
+  },
+  "firstEvents": []
+ }
+}

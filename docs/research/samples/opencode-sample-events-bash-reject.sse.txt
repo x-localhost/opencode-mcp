@@ -1,0 +1,54 @@
+data: {"id":"evt_0ebf65109001tVxvCOS2Z8ilFu","type":"server.connected","properties":{}}
+
+data: {"id":"evt_0ebf65118001UHYgQupAjaPNhW","type":"session.created","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"ses_f1409aee8ffeObqzGxsYIiVcQN","slug":"witty-orchid","version":"1.18.33","projectID":"0f12b318908e0bfebc96dbf03c03a5160fbcfe9f","directory":"/work/proj","path":"","title":"spike 2026-09-29T06:59:43.505Z","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790665183511,"updated":1790665183511}}}}
+
+data: {"id":"evt_0ebf6512d0019201Ohz7q0znWN","type":"session.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"ses_f1409aee8ffeObqzGxsYIiVcQN","slug":"witty-orchid","projectID":"0f12b318908e0bfebc96dbf03c03a5160fbcfe9f","directory":"/work/proj","path":"","title":"spike 2026-09-29T06:59:43.505Z","agent":"build","model":{"id":"fake-model","providerID":"fake","variant":"default"},"version":"1.18.33","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790665183511,"updated":1790665183531}}}}
+
+data: {"id":"evt_0ebf65131001PlX2zQQyyRxVM5","type":"message.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"msg_0ebf6512b0018j3RSqzK9EaDS4","role":"user","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","time":{"created":1790665183531},"agent":"build","model":{"providerID":"fake","modelID":"fake-model"}}}}
+
+data: {"id":"evt_0ebf65134001scGn36u9V8XXjP","type":"message.part.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","part":{"type":"text","text":"RUN_BASH now","messageID":"msg_0ebf6512b0018j3RSqzK9EaDS4","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","id":"prt_0ebf65131001VKGjjBgucyqiah"},"time":1790665183540}}
+
+data: {"id":"evt_0ebf65137001Y0dpzR7zQfB2En","type":"session.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"ses_f1409aee8ffeObqzGxsYIiVcQN","slug":"witty-orchid","projectID":"0f12b318908e0bfebc96dbf03c03a5160fbcfe9f","directory":"/work/proj","path":"","title":"spike 2026-09-29T06:59:43.505Z","agent":"build","model":{"id":"fake-model","providerID":"fake","variant":"default"},"version":"1.18.33","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790665183511,"updated":1790665183542}}}}
+
+data: {"id":"evt_0ebf6513c0013GZsVZkAJWUO2u","type":"session.status","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","status":{"type":"busy"}}}
+
+data: {"id":"evt_0ebf6513f0016RXWbMzrJnOKqa","type":"message.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"msg_0ebf6513f0013D4NQnle36TOQ8","parentID":"msg_0ebf6512b0018j3RSqzK9EaDS4","role":"assistant","mode":"build","agent":"build","path":{"cwd":"/work/proj","root":"/work/proj"},"cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"modelID":"fake-model","providerID":"fake","time":{"created":1790665183551},"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN"}}}
+
+data: {"id":"evt_0ebf65175001h9W2IzjsO3j4ru","type":"session.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"ses_f1409aee8ffeObqzGxsYIiVcQN","slug":"witty-orchid","projectID":"0f12b318908e0bfebc96dbf03c03a5160fbcfe9f","directory":"/work/proj","path":"","title":"spike 2026-09-29T06:59:43.505Z","agent":"build","model":{"id":"fake-model","providerID":"fake","variant":"default"},"version":"1.18.33","summary":{"additions":0,"deletions":0,"files":0},"cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790665183511,"updated":1790665183603}}}}
+
+data: {"id":"evt_0ebf651780018cAQw5f0tAhmUQ","type":"session.diff","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","diff":[]}}
+
+data: {"id":"evt_0ebf6517a001gGChgaw94QoI7x","type":"message.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"role":"user","time":{"created":1790665183531},"agent":"build","model":{"providerID":"fake","modelID":"fake-model"},"id":"msg_0ebf6512b0018j3RSqzK9EaDS4","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","summary":{"diffs":[]}}}}
+
+data: {"id":"evt_0ebf6519b001e9OlgYWZfFhNm8","type":"session.status","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","status":{"type":"busy"}}}
+
+data: {"id":"evt_0ebf651ae00155xRixPbihfwaj","type":"message.part.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","part":{"id":"prt_0ebf651ad001cTlRh4cS1ej0Qe","messageID":"msg_0ebf6513f0013D4NQnle36TOQ8","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","snapshot":"0b2a97ec057faa6c958b83112334c50ed0e382c1","type":"step-start"},"time":1790665183662}}
+
+data: {"id":"evt_0ebf651b2001MfRNgUBXMfiVaX","type":"message.part.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","part":{"id":"prt_0ebf651b100110wFJuwIj3VyhY","messageID":"msg_0ebf6513f0013D4NQnle36TOQ8","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","type":"tool","tool":"bash","callID":"call_fake_5","state":{"status":"pending","input":{},"raw":""}},"time":1790665183666}}
+
+data: {"id":"evt_0ebf651c3001AlkPxfiQNOJUXk","type":"message.part.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","part":{"type":"tool","tool":"bash","callID":"call_fake_5","state":{"status":"running","input":{"command":"echo fake-bash-ok","description":"echo"},"time":{"start":1790665183683}},"id":"prt_0ebf651b100110wFJuwIj3VyhY","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","messageID":"msg_0ebf6513f0013D4NQnle36TOQ8"},"time":1790665183683}}
+
+data: {"id":"evt_0ebf6524f0024lnGxVfH7QNZ9z","type":"permission.asked","properties":{"id":"per_0ebf6524f001Q3m2tP9DwSJtGp","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","permission":"bash","patterns":["echo fake-bash-ok"],"metadata":{"command":"echo fake-bash-ok"},"always":["echo *"],"tool":{"messageID":"msg_0ebf6513f0013D4NQnle36TOQ8","callID":"call_fake_5"}}}
+
+data: {"id":"evt_0ebf65264001DljYXLuJxxFHf1","type":"permission.replied","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","requestID":"per_0ebf6524f001Q3m2tP9DwSJtGp","reply":"reject"}}
+
+data: {"id":"evt_0ebf6526a001rT4C8MRWJVws70","type":"message.part.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","part":{"type":"tool","tool":"bash","callID":"call_fake_5","state":{"status":"error","input":{"command":"echo fake-bash-ok","description":"echo"},"error":"The user rejected permission to use this specific tool call.","time":{"start":1790665183683,"end":1790665183850}},"id":"prt_0ebf651b100110wFJuwIj3VyhY","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","messageID":"msg_0ebf6513f0013D4NQnle36TOQ8"},"time":1790665183850}}
+
+data: {"id":"evt_0ebf652a10011I8T1UW5aR0ZS5","type":"message.part.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","part":{"id":"prt_0ebf652a1001pw8tKaD5WVjCPg","reason":"tool-calls","snapshot":"0b2a97ec057faa6c958b83112334c50ed0e382c1","messageID":"msg_0ebf6513f0013D4NQnle36TOQ8","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","type":"step-finish","tokens":{"total":49,"input":42,"output":7,"reasoning":0,"cache":{"write":0,"read":0}},"cost":0},"time":1790665183905}}
+
+data: {"id":"evt_0ebf652a4001uKjBSJRvc8wLZr","type":"message.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"msg_0ebf6513f0013D4NQnle36TOQ8","parentID":"msg_0ebf6512b0018j3RSqzK9EaDS4","role":"assistant","mode":"build","agent":"build","path":{"cwd":"/work/proj","root":"/work/proj"},"cost":0,"tokens":{"total":49,"input":42,"output":7,"reasoning":0,"cache":{"write":0,"read":0}},"modelID":"fake-model","providerID":"fake","time":{"created":1790665183551},"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","finish":"tool-calls"}}}
+
+data: {"id":"evt_0ebf652d3001enkQ71M0K96fbD","type":"message.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"msg_0ebf6513f0013D4NQnle36TOQ8","parentID":"msg_0ebf6512b0018j3RSqzK9EaDS4","role":"assistant","mode":"build","agent":"build","path":{"cwd":"/work/proj","root":"/work/proj"},"cost":0,"tokens":{"total":49,"input":42,"output":7,"reasoning":0,"cache":{"write":0,"read":0}},"modelID":"fake-model","providerID":"fake","time":{"created":1790665183551,"completed":1790665183955},"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","finish":"tool-calls"}}}
+
+data: {"id":"evt_0ebf652d70010szkofGMVqqJv5","type":"session.status","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","status":{"type":"idle"}}}
+
+data: {"id":"evt_0ebf652d8001rgN2iW25LixJKT","type":"session.idle","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN"}}
+
+data: {"id":"evt_0ebf652d9001HRj0MqmYxFFAQt","type":"session.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"ses_f1409aee8ffeObqzGxsYIiVcQN","slug":"witty-orchid","projectID":"0f12b318908e0bfebc96dbf03c03a5160fbcfe9f","directory":"/work/proj","path":"","title":"spike 2026-09-29T06:59:43.505Z","agent":"build","model":{"id":"fake-model","providerID":"fake","variant":"default"},"version":"1.18.33","summary":{"additions":0,"deletions":0,"files":0},"cost":0,"tokens":{"input":42,"output":7,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790665183511,"updated":1790665183960}}}}
+
+data: {"id":"evt_0ebf652dc0012FeEShzwm1Qoqo","type":"session.diff","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","diff":[]}}
+
+data: {"id":"evt_0ebf652fe001TQd2mnkqaEk3gw","type":"message.updated","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"role":"user","time":{"created":1790665183531},"agent":"build","model":{"providerID":"fake","modelID":"fake-model"},"summary":{"diffs":[]},"id":"msg_0ebf6512b0018j3RSqzK9EaDS4","sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN"}}}
+
+data: {"id":"evt_0ebf65304001W2q3qThYd1pWng","type":"session.deleted","properties":{"sessionID":"ses_f1409aee8ffeObqzGxsYIiVcQN","info":{"id":"ses_f1409aee8ffeObqzGxsYIiVcQN","slug":"witty-orchid","projectID":"0f12b318908e0bfebc96dbf03c03a5160fbcfe9f","directory":"/work/proj","path":"","title":"spike 2026-09-29T06:59:43.505Z","agent":"build","model":{"id":"fake-model","providerID":"fake","variant":"default"},"version":"1.18.33","summary":{"additions":0,"deletions":0,"files":0},"cost":0,"tokens":{"input":42,"output":7,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1790665183511,"updated":1790665183960}}}}
+
