@@ -32,7 +32,7 @@ Claude Code ⇄ stdio ⇄ opencode-mcp ⇄ HTTP ⇄ opencode serve ⇄ internal 
 
 ### 1) OpenCode 모델 설정
 
-**OpenCode 설정에서 사내 provider만 켜져 있고(`enabled_providers`, 또는 `disabled_providers`로 외부 provider 차단) `model`·`small_model`이 사내 모델로 지정되어 있다면 provider를 새로 구성할 필요는 없습니다(아래 "처음 설정한다면" 부분은 건너뛰세요). 다만 아래 확인 항목은 점검하세요.** managed 모드의 opencode-mcp는 Claude Code를 실행한 사용자 권한으로 `opencode serve`를 직접 띄우고, 이 프로세스는 평소 쓰던 OpenCode 설정(전역·관리형·프로젝트 `opencode.json`, `OPENCODE_CONFIG`)과 OpenCode에 저장된 인증 정보를 사용합니다. 단, 아래 환경 변수 전달 규칙과 에어갭 기본값이 함께 적용됩니다([배포 체크리스트 §5](docs/deployment-airgap.md#5-managedattach-모드)). attach 모드(`OPENCODE_MCP_SERVER_URL`)라면 연결한 서버의 설정을 쓰므로 이 단계는 그 서버 관리자가 맡습니다(모델은 `OPENCODE_MCP_DEFAULT_MODEL`로 고를 수 있습니다).
+**OpenCode 설정에서 사내 provider만 켜져 있고(`enabled_providers`, 또는 `disabled_providers`로 외부 provider 차단) `model`·`small_model`이 사내 모델로 지정되어 있다면 provider를 새로 구성할 필요는 없습니다(아래 "처음 설정한다면" 부분은 건너뛰세요). 다만 아래 확인 항목은 점검하세요 — 그리고 이는 요청이 그대로 동작한다는 뜻일 뿐, 각 모델에 `limit`을 지정하지 않았다면 OpenCode는 그 모델의 context 크기를 0으로 보고하고 선제적으로 압축(compaction)하지 않으므로, context 인지 작업 배분을 쓰려면 아래 "모델 context 크기를 알려주고 동시 실행을 제어하려면" 안내도 함께 확인하세요.** managed 모드의 opencode-mcp는 Claude Code를 실행한 사용자 권한으로 `opencode serve`를 직접 띄우고, 이 프로세스는 평소 쓰던 OpenCode 설정(전역·관리형·프로젝트 `opencode.json`, `OPENCODE_CONFIG`)과 OpenCode에 저장된 인증 정보를 사용합니다. 단, 아래 환경 변수 전달 규칙과 에어갭 기본값이 함께 적용됩니다([배포 체크리스트 §5](docs/deployment-airgap.md#5-managedattach-모드)). attach 모드(`OPENCODE_MCP_SERVER_URL`)라면 연결한 서버의 설정을 쓰므로 이 단계는 그 서버 관리자가 맡습니다(모델은 `OPENCODE_MCP_DEFAULT_MODEL`로 고를 수 있습니다).
 
 작업할 저장소에서 `opencode debug config`로 설정을 먼저 확인하세요. 이 명령은 셸 환경 기준이며, 출력에 API 키가 평문으로 나올 수 있으니 공유하지 마세요. TUI에서 모델을 고른 것만으로는 서버의 기본 모델이 되지 않을 수 있고, agent 설정에 `model`이 있으면 설정의 `model`보다 그것이 우선합니다(opencode-mcp가 모델을 보내면 보낸 모델이 우선). `OPENCODE_MCP_DEFAULT_MODEL`을 지정하지 않으면 opencode-mcp는 모델을 보내지 않고 OpenCode의 기본값을 따릅니다. 주 모델을 고정하고 결과에 모델 이름을 표시하려면 `OPENCODE_MCP_DEFAULT_MODEL=<provider>/<model>`을 지정하세요(외부 provider 차단은 `enabled_providers`가 맡습니다). 그 밖에 다음 경우를 확인하세요.
 
@@ -43,6 +43,13 @@ Claude Code ⇄ stdio ⇄ opencode-mcp ⇄ HTTP ⇄ opencode serve ⇄ internal 
 - **설정이 특정 저장소의 `opencode.json`에만 있는 경우**: 그 저장소가 작업 디렉터리일 때 적용됩니다. `cwd`를 주지 않으면 `OPENCODE_MCP_DEFAULT_CWD`, 없으면 `CLAUDE_PROJECT_DIR`(Claude Code 프로젝트 디렉터리), 그것도 없으면 opencode-mcp 프로세스의 현재 디렉터리가 기준입니다. `OPENCODE_DISABLE_PROJECT_CONFIG=1`이면 프로젝트 설정은 무시됩니다.
 
 적용 여부는 [4) 동작 확인](#4-동작-확인)에서 모델 목록으로 확인합니다.
+
+**모델 context 크기를 알려주고 동시 실행을 제어하려면** ([모델별 컨텍스트에 맞춘 작업 배분](#모델별-컨텍스트에-맞춘-작업-배분), [병렬 실행과 최대 실행 개수](#병렬-실행과-최대-실행-개수) 참고) 다음을 권장합니다.
+
+- **OpenCode 쪽에 `limit`을 지정하세요 (1차 해결책).** 사내 모델에 `limit: {context, output}`(필요하면 `input`도)을 지정하지 않으면 `GET /provider`는 그 모델을 `{"limit":{"context":0,"output":0}}`으로 보고합니다. 이 상태에서는 OpenCode가 그 모델에 선제적 compaction(요약)을 전혀 하지 않고 매 요청마다 `max_tokens`를 32000으로 보냅니다(gateway가 더 작은 상한만 허용하면 거부될 수 있습니다). `limit`을 지정하면 OpenCode 자신의 선제적 compaction이 켜지고 올바른 `max_tokens`가 전송됩니다 — 아래 설정 예의 `limit` 필드를 참고하세요.
+- **`enabled_providers`를 쓰세요.** 지정하지 않으면 OpenCode 내장 models.dev catalog 전체(`GET /provider` 약 6 MiB, provider 226개)가 그대로 응답에 담겨 모든 turn과 `opencode-info section:"models"` 호출이 느려질 수 있습니다. `enabled_providers: ["corp"]`만 켜면 응답이 몇 KB로 줄어듭니다.
+- `limit`을 넣을 수 없거나 아직 넣지 않았다면, opencode-mcp는 그 모델의 context 크기를 전혀 모르는 상태이므로 `OPENCODE_MCP_MODEL_PROFILES`로 알려줘야 context 인지 작업 배분이 가능합니다(이 경우 `limitSource`는 `"profile"`로 표시되고, OpenCode 자신은 여전히 compaction하지 않습니다).
+- **`OPENCODE_MCP_DEFAULT_MODEL`을 지정하세요.** 모델 없이 보낸 turn은 어떤 모델이 실제로 쓰일지 opencode-mcp가 미리 알 수 없으므로, prompt 크기 가드(`OPENCODE_MCP_CONTEXT_GUARD`)와 모델별 동시 실행 cap(`OPENCODE_MCP_MODEL_PROFILES`의 `maxRunning`)의 대상이 되지 않고 전역 cap만 적용됩니다.
 
 처음 설정한다면 OpenCode가 사용할 모델 provider를 설정합니다. 설정하지 않으면 OpenCode 기본 provider가 외부 클라우드일 수 있으므로, 사내 gateway 사용 시 먼저 provider를 구성하세요. [배포 체크리스트 §3](docs/deployment-airgap.md#3-내부-openai-compatible-gateway)의 OpenAI-compatible 설정은 다음 형태입니다(실제 gateway URL, model ID, key 환경 변수로 바꾸세요).
 
@@ -57,7 +64,7 @@ Claude Code ⇄ stdio ⇄ opencode-mcp ⇄ HTTP ⇄ opencode serve ⇄ internal 
         "baseURL": "https://llm-gateway.example.corp/v1",
         "apiKey": "{env:INTERNAL_LLM_API_KEY}"
       },
-      "models": {"coding-model": {"name": "Internal Coding Model", "tool_call": true}}
+      "models": {"coding-model": {"name": "Internal Coding Model", "tool_call": true, "limit": {"context": 128000, "output": 4096}}}
     }
   },
   "model": "corp/coding-model",
@@ -65,7 +72,7 @@ Claude Code ⇄ stdio ⇄ opencode-mcp ⇄ HTTP ⇄ opencode serve ⇄ internal 
 }
 ```
 
-Linux managed config 경로는 `/etc/opencode/opencode.json`, macOS는 `/Library/Application Support/opencode` 또는 MDM profile `ai.opencode.managed`입니다. custom 파일은 `OPENCODE_CONFIG`, inline 설정은 `OPENCODE_CONFIG_CONTENT`를 쓸 수 있습니다. OpenCode의 기본 모델 대신 이 모델로 고정하고 결과에 모델 이름을 표시하려면 [3) Claude Code 등록](#3-claude-code-등록)에서 `--env OPENCODE_MCP_DEFAULT_MODEL=corp/coding-model`을 추가합니다.
+`limit`(여기서는 context 128000·output 4096)은 OpenCode 자신의 선제적 compaction과 올바른 `max_tokens`를 켜는 값이므로, 실제 gateway/모델의 한계에 맞춰 채웁니다. Linux managed config 경로는 `/etc/opencode/opencode.json`, macOS는 `/Library/Application Support/opencode` 또는 MDM profile `ai.opencode.managed`입니다. custom 파일은 `OPENCODE_CONFIG`, inline 설정은 `OPENCODE_CONFIG_CONTENT`를 쓸 수 있습니다. OpenCode의 기본 모델 대신 이 모델로 고정하고 결과에 모델 이름을 표시하려면 [3) Claude Code 등록](#3-claude-code-등록)에서 `--env OPENCODE_MCP_DEFAULT_MODEL=corp/coding-model`을 추가합니다(모델 없는 turn도 크기 추정과 동시 실행 cap의 대상이 되도록 하는 역할도 합니다).
 
 ### 2) opencode-mcp 빌드
 
@@ -139,6 +146,39 @@ Claude Code에 자연어로 요청할 수 있습니다.
 - `OPENCODE_MCP_DEFAULT_APPROVAL_POLICY`: `never`(기본값) 또는 `on-request`.
 - `OPENCODE_MCP_MAX_SESSIONS`: 추적 가능한 세션 수, 기본값 256, 최댓값 10000.
 - `OPENCODE_MCP_SERVER_URL`: 기존 OpenCode 서버에 붙이는 attach 모드 URL. 지정하면 기본 모드도 `attach`가 됩니다.
+- `OPENCODE_MCP_MAX_RUNNING_TURNS` / `_MAX_QUEUED_TURNS`: 동시 실행 run slot 수(기본 4)와 대기열 크기(기본 64). 초과분은 자동으로 큐에 들어갑니다.
+- `OPENCODE_MCP_MODEL_PROFILES`: 모델별 context/output/input과 `maxRunning`을 알려주는 JSON. `OPENCODE_MCP_CONTEXT_GUARD`(기본 `reject`)로 이 budget을 벗어나는 prompt를 제출 전에 거부할지 정합니다.
+
+run cap·대기열·모델 profile을 함께 지정하는 예 (`claude mcp add`):
+
+```sh
+claude mcp add --transport stdio opencode \
+  --env OPENCODE_MCP_MAX_RUNNING_TURNS=4 \
+  --env OPENCODE_MCP_MAX_QUEUED_TURNS=64 \
+  --env OPENCODE_MCP_MODEL_PROFILES='{"corp/coder-32k":{"context":32768,"output":4096,"maxRunning":2},"corp/big":{"maxRunning":1}}' \
+  --env OPENCODE_MCP_DEFAULT_MODEL=corp/coder-32k \
+  -- node /opt/opencode-mcp/opencode-mcp.mjs
+```
+
+같은 설정을 프로젝트 `.mcp.json`의 `env`로 적으면:
+
+```json
+{
+  "mcpServers": {
+    "opencode": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/opt/opencode-mcp/opencode-mcp.mjs"],
+      "env": {
+        "OPENCODE_MCP_MAX_RUNNING_TURNS": "4",
+        "OPENCODE_MCP_MAX_QUEUED_TURNS": "64",
+        "OPENCODE_MCP_MODEL_PROFILES": "{\"corp/coder-32k\":{\"context\":32768,\"output\":4096,\"maxRunning\":2},\"corp/big\":{\"maxRunning\":1}}",
+        "OPENCODE_MCP_DEFAULT_MODEL": "corp/coder-32k"
+      }
+    }
+  }
+}
+```
 
 전체 값과 검증 규칙은 [환경 변수 표](#설정-환경-변수)를 참고하세요.
 
@@ -205,6 +245,52 @@ Claude Code에서 `claude mcp remove opencode`를 실행합니다(Claude Code �
   {"section":"agents","cwd":"/workspace/project"}
   ```
 
+### 모델별 컨텍스트에 맞춘 작업 배분
+
+Claude Code는 작업을 보내기 전에 `opencode-info section:"models"`로 각 모델의 `limit`(`context`/`input`/`output`), `usableInputTokens`, `maxRunning`, `serverDefault`를 확인합니다.
+
+- `usableInputTokens`는 OpenCode가 compaction 없이 쓸 수 있는 입력 budget이며, OpenCode 자신의 시스템 프롬프트·도구 설명(약 8천 토큰)이 이미 그 안에 포함되어 있습니다. 실제 prompt와 파일에 쓸 수 있는 여유는 이보다 작습니다.
+- 크기가 중요한 작업은 `model`을 명시적으로 지정하세요. `opencode`(start)는 `model`을 생략하면 설정된 `OPENCODE_MCP_DEFAULT_MODEL`을 쓰고, `opencode-reply`는 생략 시 그 세션에 이미 저장된 모델을 그대로 이어받습니다 — prompt 크기 가드와 모델별 cap은 이렇게 결정되는 유효 모델이 전혀 없을 때만(기본 모델도, 세션에 저장된 모델도 없을 때) 건너뜁니다. `context`(`context.model` 포함)는 turn이 끝난 뒤가 아니라 usage 메타데이터가 포함된 assistant 메시지가 처음 관측되는 즉시 나타나므로, 아직 진행 중인 turn의 running snapshot에도 실릴 수 있습니다.
+- prompt와 (agent가 읽을) 파일을 합쳐 budget보다 충분히 작게 유지하세요. 대략 ASCII 4자 ≈ 토큰 1개로 어림잡습니다(비-ASCII는 2자 ≈ 토큰 1개). 더 큰 작업은 여러 세션/모델로 나누세요 — 예를 들어 분석은 context가 큰 모델로, 모듈별 편집은 작은 모델로 각 세션/`cwd`에 나눠 맡깁니다.
+- turn 결과의 `context{model,used,peakUsed,usableInputTokens,ratio,compacted,limitSource}`를 확인하세요. `ratio`가 0.8 이상이면 `CONTEXT_HIGH` 경고가 붙습니다 — 이때는 그 세션을 계속 채우지 말고 자기 완결적인(self-contained) prompt로 새 `opencode` 세션을 시작하고, 기존 세션은 `opencode-end`로 정리하세요.
+- `peakUsed`는 이번 turn에서 context가 실제로 가장 커졌던 지점입니다(마지막 assistant 메시지 기준인 `used`와 달리, 중간에 compaction이 있었어도 가려지지 않습니다). 다음 분할 크기를 정할 때는 `used`보다 `peakUsed`를 기준으로 삼으세요.
+
+`opencode-info` models 항목 예시:
+
+```json
+{"model":"corp/coder-32k","defaultForProvider":true,"limit":{"context":32768,"output":4096},"usableInputTokens":28672,"limitSource":"profile","maxRunning":2}
+```
+
+context 경고가 붙은 turn 결과 예시:
+
+```json
+{"status":"completed","context":{"model":"corp/coder-32k","used":24100,"peakUsed":24700,"usableInputTokens":28672,"ratio":0.841,"compacted":false,"limitSource":"profile"},"warnings":[{"code":"CONTEXT_HIGH","message":"Last reported context usage is 84% of corp/coder-32k's budget (24100 of 28672 tokens)."}],"hint":"… Context is nearly full; continue in a new opencode session with a self-contained prompt and opencode-end this one. If OpenCode itself has no context limit configured for this model, it will not compact proactively."}
+```
+
+### 병렬 실행과 최대 실행 개수
+
+opencode-mcp 프로세스 하나는 기본적으로 `OPENCODE_MCP_MAX_RUNNING_TURNS`(기본 4)개의 turn만 동시에 실행합니다. 더 많은 작업을 보내면 자동으로 대기열(FIFO, 기본 최대 `OPENCODE_MCP_MAX_QUEUED_TURNS`=64)에 들어갔다가 자리가 나는 대로 시작되므로, 클라이언트 쪽에서 직접 동시 실행 수를 제한할 필요가 없습니다.
+
+- 각 작업을 `wait-seconds:0`으로 시작하세요. cap을 넘는 초과분도 바로 큐에 들어가며 거부되지 않습니다(큐까지 가득 찬 경우는 예외, 아래 `RUN_QUEUE_CAPACITY` 참고).
+- 결과에 `queue{position,running,maxRunning,blockedBy,model?,modelRunning?,modelMaxRunning?,queuedMs}` 객체가 있으면 아직 run slot을 기다리는 중입니다. `status`는 그래도 `"running"`이고 `resendSafety`는 `"not_submitted"`이지만, **다시 보내지 마세요** — 자리가 나면 자동으로 시작됩니다.
+- 모든 작업은 `opencode-status`의 `ids`(한 번에 최대 16개)로 모읍니다. `wait-for:"all"`/`"any"`와 `wait-seconds`를 평소처럼 쓰면 됩니다.
+- 아직 큐에 있는 turn은 `opencode-cancel`로 취소할 수 있습니다(업스트림에 아무것도 보내지 않았으므로 `not_submitted`로 끝납니다).
+- `OPENCODE_MCP_MODEL_PROFILES`의 `maxRunning`으로 모델별 동시 실행 상한을 따로 둘 수 있습니다. 전역 cap에 여유가 있어도 특정 모델은 그 모델의 cap만큼만 동시에 돕니다.
+- run slot과 큐가 모두 찼으면 새 `opencode`/`opencode-reply` 호출은 제출 전에 `RUN_QUEUE_CAPACITY`로 거부됩니다(아무것도 보내지 않습니다). 실행 중인 turn이 끝나길 기다렸다가 다시 시도하세요.
+- `wait-seconds`는 큐 대기 시간도 포함해서 관찰 시간을 제한합니다 — 큐에 있어도 `wait-seconds:0`은 즉시 반환됩니다. 반대로 `timeout-seconds`로 재는 turn 실행 제한 시간은 제출 이후부터 측정되므로 큐 대기 시간은 포함하지 않습니다.
+
+큐에 쌓인 항목 예시:
+
+```json
+{"status":"running","executionState":"active","resendSafety":"not_submitted","content":"","queue":{"position":3,"running":4,"maxRunning":4,"blockedBy":"global","queuedMs":1200},"hint":"This turn is queued for a run slot and will start automatically; keep observing it with opencode-status and do not resend it."}
+```
+
+`opencode-info section:"models"` 항목 예시(모델별 cap):
+
+```json
+{"model":"corp/big","limit":{"context":200000,"input":150000,"output":8192},"usableInputTokens":141808,"limitSource":"opencode","maxRunning":1}
+```
+
 ### 비동기(폴링) 예시
 
 즉시 반환받고 나중에 직접 상태를 확인하려면 `wait-seconds: 0`으로 시작한 뒤 `opencode-status`로 폴링합니다.
@@ -225,8 +311,8 @@ Claude Code에서 `claude mcp remove opencode`를 실행합니다(Claude Code �
 | | `sandbox` | enum · `workspace-write` | `read-only`, `workspace-write`, `danger-full-access` |
 | | `approval-policy` | enum · `never` | `never` 또는 `on-request` |
 | | `base-instructions`, `developer-instructions`, `title` | string · 미설정 | 지침 및 제목 |
-| | `timeout-seconds` | 양의 정수 · 서버 설정 | turn 제한 시간 |
-| | `wait-seconds` | 0 이상 정수 · 미설정(=turn 종료까지 블로킹) | 반환 전 관찰 시간. 스키마 자체에는 상한이 없지만, 엔진이 `OPENCODE_MCP_MAX_TURN_TIMEOUT_SECONDS`(기본 21600)보다 큰 값을 거부하지 않고 그 값으로 **클램프**합니다 |
+| | `timeout-seconds` | 양의 정수 · 서버 설정 | turn 제한 시간(run slot을 기다리는 대기열 시간은 포함하지 않으며, 제출 이후부터 측정됩니다) |
+| | `wait-seconds` | 0 이상 정수 · 미설정(=turn 종료까지 블로킹) | 반환 전 관찰 시간. 스키마 자체에는 상한이 없지만, 엔진이 `OPENCODE_MCP_MAX_TURN_TIMEOUT_SECONDS`(기본 21600)보다 큰 값을 거부하지 않고 그 값으로 **클램프**합니다. run slot이 없어 대기열에서 기다리는 시간도 이 관찰 시간에 포함되므로, `0`이면 대기 중이어도 즉시 `queue` 객체와 함께 반환됩니다 |
 | | `request-id` | string · 선택 | 영숫자로 시작하는 1–128자 `[A-Za-z0-9._:-]`; opencode/reply 간 공유 |
 | | `output-schema` | object · 선택 | turn-local JSON Schema subset; 잘못된 subset은 mutation 전에 `INVALID_OUTPUT_SCHEMA` |
 | | `detail` | `standard` \| `compact` · `standard` | compact는 toolCalls/filesChanged를 생략하고 counts를 표시 |
@@ -237,7 +323,7 @@ Claude Code에서 `claude mcp remove opencode`를 실행합니다(Claude Code �
 | | `timeout-seconds`, `wait-seconds` | 양의 정수 / 0 이상 · 미설정(=turn 종료까지 블로킹) | turn 제한 / 대기(마찬가지로 최대 turn timeout으로 클램프) |
 | | `request-id`, `output-schema`, `detail`, `max-output-chars` | 위와 같음 | `opencode`와 같은 규칙; schema는 다음 turn에 상속되지 않음 |
 | `opencode-status` | ID 별칭 3종 | string · 생략 시 목록 | 상태 확인 또는 추적 세션 목록 |
-| | `wait-seconds` | 0–600 정수 · `0` | 상태 관찰(최대 600초); 대기 중 승인 요청을 전달할 수 있음. turn이 아직 admission(연결/warm-up 등) 단계여도 이 시간 안에 반환됩니다 |
+| | `wait-seconds` | 0–600 정수 · `0` | 상태 관찰(최대 600초); 대기 중 승인 요청을 전달할 수 있음. turn이 아직 admission(연결/warm-up 등) 단계이거나 run slot 대기열에 있어도 이 시간 안에 반환됩니다 |
 | | `ids` | string[] · 1–16개, 각 1–200자, unique | batch 모드; ID 별칭과 상호 배타 |
 | | `wait-for` | `any` \| `all` · `any` | ids 전용; 하나 또는 전체 항목이 준비되기를 기다림 |
 | | `detail`, `max-output-chars` | 위와 같음 · batch는 compact | max-output-chars는 응답 전체의 aggregate answer budget, 기본 min(서버 cap, 8000) |
@@ -263,15 +349,15 @@ Claude Code에서 `claude mcp remove opencode`를 실행합니다(Claude Code �
 
 `structuredContent.kind`는 `turn`, `sessions`, `end`, `error`, `output`, `info`, `batch` 중 하나입니다. 공통 필드는 `status`, `content`입니다.
 
-- **turn**: `sessionId`, `threadId`, `turnId`, `turn`, `executionState`, `cleanup`, `directory`, `filesChanged`, `toolCalls`, `toolCallCount`, `pendingApprovals`, `elapsedMs`, `truncated`, `hint`; 가능하면 모델·agent·error·tokens(`input/output/reasoning`)·cost 포함.
+- **turn**: `sessionId`, `threadId`, `turnId`, `turn`, `executionState`, `cleanup`, `directory`, `filesChanged`, `toolCalls`, `toolCallCount`, `pendingApprovals`, `elapsedMs`, `truncated`, `hint`; 가능하면 모델·agent·error·tokens(`input/output/reasoning`, 있으면 `cache{read,write}`)·cost 포함. run slot을 기다리는 동안은 `queue{position,running,maxRunning,blockedBy,model?,modelRunning?,modelMaxRunning?,queuedMs}`가 붙고, 대기열을 거쳤다면(또는 큐에서 취소·타임아웃됐다면) 승인 뒤에도 누적 대기 시간 `queuedMs`가 남습니다. usage가 관찰된 assistant가 있으면 `context{model,used,peakUsed,usableInputTokens,ratio,limitSource,compacted}`가 붙습니다([모델별 컨텍스트에 맞춘 작업 배분](#모델별-컨텍스트에-맞춘-작업-배분) 참고).
 - **turn 확장 필드**: `output`은 보존 상태(`pending|retained|unavailable`), 사유(`expired|evicted|too_large`), `answerChars`, `toolCallCount`, `structuredChars`, `partial`, `expiresAt`를 담습니다. `structuredOutputStatus`는 `valid|missing|invalid`; 유효할 때만 완전한 `structuredOutput`, 오류면 `{code,message}`인 `structuredOutputError`가 올 수 있습니다. 추출 오류 코드는 `JSON_MISSING`, `JSON_AMBIGUOUS`, `JSON_PARSE_ERROR`, `OUTPUT_TOO_LARGE`, `SCHEMA_MISMATCH`입니다. `request` receipt는 `{id,serverInstanceId,replayed,scope:"process",expiresAt?}`입니다. 이 메타데이터와 출력 형식은 실행 완료 판정을 바꾸지 않습니다.
-- **과부하·답변 판정 필드**: `finish`는 OpenCode의 종료 사유, `warnings`는 `EMPTY_RESPONSE`, `TRUNCATED`, `NONSTANDARD_FINISH` 진단 목록입니다. `resendSafety`는 재전송 판단의 증거 수준입니다: `not_submitted`는 요청을 보내지 않았거나 미실행이 확인됨, `no_observed_effects`는 완전하고 정리된 기록에서 도구·patch 효과가 관찰되지 않음(“안전함”보다 약함), `inspect_effects`는 도구/patch 효과가 관찰됨, `unknown`은 기록·실행·정리가 불확실함을 뜻합니다. `upstreamRetry`는 `{attempt,message,nextAt?,observedAt}` provider 재시도 정보, `upstreamRead`는 `{state:"degraded",reason,statusCode?,since,nextAt}` 읽기 지연 정보, `responseLoop`는 `{count,windowMs,pattern}` 반복 응답 증거입니다. provider `error`에는 확인 가능한 `statusCode`, `retryable`, `retryAfterSeconds`와 `condition:"MODEL_OVERLOADED"`가 포함될 수 있습니다. batch turn 항목에도 같은 필드가 적용됩니다.
+- **과부하·답변 판정 필드**: `finish`는 OpenCode의 종료 사유, `warnings`는 `EMPTY_RESPONSE`, `TRUNCATED`, `NONSTANDARD_FINISH`, `CONTEXT_HIGH`(ratio ≥ 0.8) 진단 목록입니다. `resendSafety`는 재전송 판단의 증거 수준입니다: `not_submitted`는 요청을 보내지 않았거나 미실행이 확인됨, `no_observed_effects`는 완전하고 정리된 기록에서 도구·patch 효과가 관찰되지 않음(“안전함”보다 약함), `inspect_effects`는 도구/patch 효과가 관찰됨, `unknown`은 기록·실행·정리가 불확실함을 뜻합니다. `upstreamRetry`는 `{attempt,message,nextAt?,observedAt}` provider 재시도 정보, `upstreamRead`는 `{state:"degraded",reason,statusCode?,since,nextAt}` 읽기 지연 정보, `responseLoop`는 `{count,windowMs,pattern}` 반복 응답 증거입니다. provider `error`에는 확인 가능한 `statusCode`, `retryable`, `retryAfterSeconds`와 `condition:"MODEL_OVERLOADED"`가 포함될 수 있습니다. batch turn 항목에도 같은 필드가 적용됩니다.
 - 단일 turn의 `status`가 `failed` 또는 `timeout`이면 MCP 결과는 이제 `isError:true`입니다. `structuredContent`는 그대로 함께 제공됩니다. `completed`(경고 포함), `cancelled`, `running`은 `isError:true`가 아닙니다.
 - **compact/축약**: compact turn은 `toolCalls`, `filesChanged`를 생략하고 `toolCallCount`, `filesChangedCount`, `pendingApprovalCount`를 유지합니다. `omittedFields`는 생략된 필드 이름을, `truncated`는 잘림을 표시합니다. batch compact 항목에도 `toolCallCount`, `filesChangedCount`, `pendingApprovalCount`가 있을 수 있습니다. 직렬화 객체는 45,000자 미만이어야 합니다.
 - **output**: `opencode-output`는 `turnId`, `turn`, `section`, `offset`, `nextOffset`, `total`, `hasMore`, `partial`, `truncated` 및 해당 페이지의 `toolCalls`/`diff`를 반환합니다. diff metadata는 `source:"opencode-snapshot"`, `scope:"user-message"`, `sourceMessageId`, `snapshotId`, `observedAt`, `completeness:"not-guaranteed"`, `compacted`, `view`를 포함합니다. 텍스트 `content`는 페이지 텍스트이며 tool-call/diff-stat은 요약 content와 구조화 항목을 반환합니다.
-- **info**: `opencode-info` 결과는 `section`, `truncated`와 선택적 `server`, `models`, `agents`, `roots`, pagination metadata를 반환합니다. server는 버전/모드/defaults/limits/capabilities, models는 `model`, `providerId`, `modelId`, `defaultForProvider`, 선택적 `toolcall`, agents는 `name`/`mode`를 투영합니다.
-- **batch**: `{status:"ready"|"waiting",waitFor,reason:"condition"|"deadline",results,readyIds,pendingIds,truncated}`. `results`에는 입력 순서대로 각 ID의 turn snapshot 또는 `{sessionId,status:"error",error:{name,message}}`가 들어갑니다. 관찰 target은 호출 시작 시 캡처되며 알 수 없는 ID도 batch 전체 실패를 일으키지 않습니다.
-- **sessions**: 세션 항목은 `sessionId`, `title`, `directory`, `status`, `turns`, `updatedAt`; 목록 결과에 `opencodeVersion`이 있을 수 있습니다.
+- **info**: `opencode-info` 결과는 `section`, `truncated`와 선택적 `server`, `models`, `agents`, `roots`, pagination metadata를 반환합니다. server는 버전/모드/defaults(`contextGuard` 포함)/limits/concurrency/capabilities를 담습니다. `limits`에는 `maxSessions`, `maxRunningTurns`(`null`=무제한), `maxQueuedTurns`, `queueTimeoutSeconds`(`null`=비활성화)가 있고, `concurrency`에는 `{running,queued,heldUnknown,available,perModel,perModelTotal,perModelTruncated}`(`perModel`은 설정된 모델별 cap과 현재 실행/대기 수, 최대 32개)가 있습니다. `capabilities`에는 `run-queue`, `model-limits`, `context-usage`가 포함됩니다. models는 `model`, `providerId`, `modelId`, `defaultForProvider`(OpenCode 자신의 provider별 정렬 기본값이며 `OPENCODE_MCP_DEFAULT_MODEL`과는 무관), 선택적 `toolcall`, `limit`, `usableInputTokens`, `limitSource`, `maxRunning`, `serverDefault`(이 서버의 `OPENCODE_MCP_DEFAULT_MODEL`과 일치하는 모델)를 투영하며, agents는 `name`/`mode`를 투영합니다.
+- **batch**: `{status:"ready"|"waiting",waitFor,reason:"condition"|"deadline",results,readyIds,pendingIds,truncated}`. `results`에는 입력 순서대로 각 ID의 turn snapshot(요청한 `model`과 `queue`/`queuedMs`/`context`가 있으면 함께 포함) 또는 `{sessionId,status:"error",error:{name,message}}`가 들어갑니다. 관찰 target은 호출 시작 시 캡처되며 알 수 없는 ID도 batch 전체 실패를 일으키지 않습니다.
+- **sessions**: 세션 항목은 `sessionId`, `title`, `directory`, `status`, `turns`, `updatedAt`, run slot을 기다리는 turn이 있으면 `queue`; 목록 결과에 `opencodeVersion`이 있을 수 있습니다.
 - **end**: `status`는 `ended` 또는 `not_found`; `action`, `abortedRunningTurn`, `cleanup` 포함.
 - **error**: `status: "failed"`, `error: {name,message}`; 세션 ID가 있을 수 있습니다.
 
@@ -306,8 +392,15 @@ Turn 상태는 `running`, `waiting_for_approval`, `completed`, `failed`, `cancel
 | `REQUEST_CAPACITY` | request-id 테이블이 찼습니다. 키 없이 재시도하거나 만료를 기다립니다. |
 | `REQUEST_PENDING` | 같은 request-id의 원 호출이 아직 admission 중입니다. 같은 키로 잠시 후 재시도하거나 `opencode-status`로 확인합니다. |
 | `SESSION_CAPACITY` | 추적 중인 세션이 너무 많습니다. `opencode-end`로 끝난 세션을 정리하거나 관리자가 `OPENCODE_MCP_MAX_SESSIONS`를 올려야 합니다. |
+| `RUN_QUEUE_CAPACITY` | run slot과 대기열이 모두 찼습니다. 제출 전 거부이며 아무것도 보내지 않았습니다(`opencode-reply`라면 기존 세션은 그대로입니다). 실행 중인 turn이 끝나길 기다렸다가 재시도하세요(`opencode-info section:"server"`의 `concurrency` 확인). |
+| `PROMPT_TOO_LARGE` | prompt만으로 선택한 모델의 입력 budget을 heuristic으로 초과한다고 판단했습니다. 대부분 제출 전 거부(세션 없음)입니다. 모델의 budget을 warm-up 이후에야 알 수 있었던 드문 경우에는 idle 세션이 남은 `failed` turn(`error.name:"PROMPT_TOO_LARGE"`, `retryable:false`)으로 보고됩니다 — 그때는 `opencode-reply`로 더 작은 prompt나 다른 `model`을 보내거나 `opencode-end`로 정리하세요. 어느 경우든 작업을 나누거나 더 큰 context 모델을 지정하세요(`opencode-info section:"models"`). |
 
-다른 모델 오류는 turn의 `error.name`으로 반환될 수 있습니다.
+다른 모델 오류는 turn의 `error.name`으로 반환될 수 있습니다. 그중 다음 둘은 이 기능이 추가하는 이름입니다.
+
+| turn `error.name` | 대응 |
+|---|---|
+| `QUEUE_TIMEOUT` | `OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS` 동안 run slot을 못 받았습니다. `failed`, `resendSafety:"not_submitted"`, `retryable:true`이며 세션은 idle로 남습니다 — 새 세션을 시작하지 말고 같은 세션에 `opencode-reply`로 다시 보내세요. |
+| `ContextOverflowError` | prompt 또는 세션 기록이 모델의 context window를 넘어 OpenCode가 reject했고 재시도(reactive compaction)로도 회복하지 못했습니다. 작업을 나누거나 새 세션을 시작하거나 더 큰 context 모델을 선택하세요(`opencode-info section:"models"`). 이 이벤트가 나와도 마지막 assistant가 성공했다면 turn은 그대로 `completed`로 보고됩니다(재시도 compaction으로 복구된 경우). |
 
 `error.retryable`은 일시적 장애라는 뜻이지 prompt를 다시 보내도 된다는 허가가 아니다 — `executionState`, `cleanup`, `resendSafety`를 먼저 확인합니다.
 
@@ -403,6 +496,11 @@ Claude Code의 기본 tool 호출 hard limit은 100,000,000ms(약 27.8시간)이
 | `OPENCODE_MCP_RESPONSE_LOOP_LIMIT` | `6` | 10초 안의 연속 응답 루프 임계값, 3–20 정수; `0`은 비활성화. 오류: `must be 0 (disabled) or an integer between 3 and 20, got "<값>"` |
 | `OPENCODE_MCP_MAX_OUTPUT_CHARS` | `20000` | 양의 정수 content 제한 |
 | `OPENCODE_MCP_MAX_SESSIONS` | `256` | 동시 추적 세션(활성+quarantined) 상한, 양의 정수 ≤ 10000; 초과 시 새 `opencode` 시작은 어떤 upstream 변경도 없이 `SESSION_CAPACITY`로 거부되며 기존 세션은 절대 evict되지 않음 |
+| `OPENCODE_MCP_MAX_RUNNING_TURNS` | `4` | 동시 실행 가능한 turn(run slot) 수, `0`은 무제한; 정수 0–256. 오류: `must be an integer between 0 and 256, got "<값>"` |
+| `OPENCODE_MCP_MAX_QUEUED_TURNS` | `64` | 대기열에 쌓일 수 있는 turn 수, 정수 0–1024(`0`은 대기열 없음 — 큐가 가득 차면 즉시 `RUN_QUEUE_CAPACITY`). 오류: `must be an integer between 0 and 1024, got "<값>"` |
+| `OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS` | `0`(비활성화) | 대기열에서 run slot을 기다리는 최대 초; `0` 또는 1–2147483 정수(대기열은 upstream에 아무것도 붙잡지 않으므로 기본은 무제한 대기). 오류: `must be a positive integer (seconds), got "<값>"`, 2147483초 초과 시 `must not exceed 2147483 seconds` |
+| `OPENCODE_MCP_MODEL_PROFILES` | `{}` | 모델별 `{context?, input?, output?, maxRunning?}` JSON 객체, 키는 `provider/model`(예: `{"corp/coder-32k":{"context":32768,"output":4096,"maxRunning":2},"corp/big":{"maxRunning":1}}`; `maxRunning`만 있는 profile도 유효). 최대 256개 키. 검증 오류: JSON이 아니면 `must be valid JSON`; 객체가 아니면 `must be a JSON object`; 256개 초과면 `must contain at most 256 model profiles`; 키 형식 오류면 `model key "<model>" must use provider/model with valid 1..200 character parts`; 값이 객체가 아니면 `profile for "<model>" must be an object`; 알 수 없는 필드면 `profile for "<model>" has unknown field "<field>"`; 필드 범위 오류면 `profile field "<field>" for "<model>" must be an integer between 1 and <field 최대값>`(`context`/`input`/`output`은 100000000, `maxRunning`은 256); `maxRunning`이 `OPENCODE_MCP_MAX_RUNNING_TURNS`보다 크면 `profile maxRunning for "<model>" must not exceed OPENCODE_MCP_MAX_RUNNING_TURNS`; `context`/`output` 중 하나만 있으면 `profile for "<model>" must specify context and output together`; `input`이 `context`보다 크면 `profile input for "<model>" must not exceed context` |
+| `OPENCODE_MCP_CONTEXT_GUARD` | `reject` | `reject` 또는 `off`; `reject`면 prompt가 알려진 budget을 heuristic(ASCII 4자/non-ASCII 2자당 토큰 1개, 세션 기록 미포함)으로 명백히 초과할 때 제출 전에 `PROMPT_TOO_LARGE`로 거부합니다. 오류: `must be one of reject\|off, got "<값>"` |
 | `OPENCODE_MCP_END_ACTION` | `delete` | `delete` 또는 `archive` |
 | `OPENCODE_MCP_ON_EXIT` | `abort` | `abort` 또는 `end` |
 | `OPENCODE_MCP_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
@@ -434,7 +532,7 @@ Claude Code의 기본 tool 호출 hard limit은 100,000,000ms(약 27.8시간)이
 ### 자원
 
 - managed OpenCode는 OpenCode가 필요한 첫 호출(예: `opencode`) 때 시작하고(`opencode-info`의 server 조회는 시작하지 않음), 시작 후 opencode-mcp가 끝날 때까지 유지됩니다(idle 자동 종료 없음). 실행 중인 작업이 없으면 폴링, SSE, 타이머가 돌지 않습니다.
-- 재연결 백오프(0.5–5초), 응답 크기(JSON 8MiB, 이벤트 1MiB 등), 메모리 캐시(출력 32MiB/1시간, 추적 세션 기본 256개)에 상한이 있습니다. turn은 기본 1시간, 최대 6시간의 timeout 뒤 자동 중단됩니다.
+- 재연결 백오프(0.5–5초), 응답 크기(JSON 8MiB, 이벤트 1MiB, `/provider` catalog 32MiB 등), 메모리 캐시(출력 32MiB/1시간, 추적 세션 기본 256개)에 상한이 있습니다. `/provider` catalog가 32 MiB를 넘으면(`enabled_providers` 미설정 등) `UPSTREAM_RESPONSE_TOO_LARGE`입니다. turn은 기본 1시간, 최대 6시간의 timeout 뒤 자동 중단됩니다.
 
 ### OpenCode 자체가 하는 일
 
@@ -465,6 +563,10 @@ OpenCode 1.18.33은 빈 stream, HTML 응답 또는 잘못된 tool JSON에서 초
 ## 보안 모델과 한계
 
 v0.3 기능 한계: 보존 출력은 메모리에서 1시간, 최대 128 turns/32 MiB(각 turn 최대 4 MiB)이며 성공한 `opencode-end`와 프로세스 종료 시 사라집니다. `request-id`는 프로세스 내, 최대 4096개 기록의 24시간 dedup이며 crash-safe exactly-once가 아닙니다. diff는 해당 turn의 사용자 메시지 기준 OpenCode snapshot이라 완전성이 보장되지 않고, 빈 diff도 변경 없음의 증거가 아닙니다. `opencode-info`는 allowlist로 투영한 정보만 반환하고 provider key/options를 노출하지 않습니다. OpenCode `opencode-ai@1.18.33`에서는 prompt `format`이 message 읽기를 영구히 깨뜨리므로 사용하지 않습니다. 세션 수는 `OPENCODE_MCP_MAX_SESSIONS`(기본 256)로 제한되며 초과 시 `opencode-end`로 정리해야 새 세션을 시작할 수 있습니다.
+
+run slot cap과 대기열 한계: `OPENCODE_MCP_MAX_RUNNING_TURNS`/`_MAX_QUEUED_TURNS`는 **이 opencode-mcp 프로세스** 단위입니다 — attach 모드로 여러 opencode-mcp 프로세스가 같은 OpenCode 서버에 붙으면 서버에 실제로 걸리는 동시 실행 수는 각 프로세스 cap의 합만큼 더 커질 수 있습니다. cap은 opencode-mcp가 추적하는 **turn 수**를 세는 것이지 상류(gateway) 요청 수가 아닙니다 — compaction이나 연속 단계처럼 한 turn 안에서 여러 번 LLM 요청이 발생할 수 있습니다. 승인 대기 중인 turn(`waiting_for_approval`)은 `OPENCODE_MCP_APPROVAL_TIMEOUT_SECONDS`(기본 600초)까지 run slot을 계속 점유합니다. 실행 결과가 불확실한(`executionState:"unknown"`) turn도 복구가 확인될 때까지 slot을 유지하며(`opencode-info section:"server"`의 `concurrency.heldUnknown`), 세션 복구·managed 프로세스 재시작·세션 종료 시 해제됩니다. 큐 대기 때문에 turn 시작이 늦어질 수 있으므로, Claude Code 쪽 MCP tool-call `timeout`을 짧게 지정했다면 이 대기 시간까지 포함해 여유를 두거나 `wait-seconds`로 직접 관찰하세요.
+
+`OPENCODE_MCP_CONTEXT_GUARD`의 prompt 크기 추정은 ASCII 문자 4자당 토큰 1개, 비-ASCII 문자 2자당 토큰 1개로 어림잡는 휴리스틱이며 세션 기록은 포함하지 않습니다 — 과소·과대 추정이 있을 수 있고 실제 tokenizer가 아닙니다. `usableInputTokens`/`context.used`/`context.peakUsed` 등 사용량 수치는 OpenCode 1.18.33의 내부 계산을 그대로 반영한 것이며, 다른 OpenCode 버전에서는 달라질 수 있습니다.
 
 **지연된 abort 한계**: abort 응답이 유실되거나 잘못된 형식이면 모호성 표식을 유지하고 두 번째 abort를 보내지 않습니다. 세션은 최대 `max(2 × request timeout, 60초)` 동안 격리됩니다. 그 뒤 idle/terminal 증거를 확인해 해제하며, 늦게 도착한 abort는 다음 turn을 중단시킬 수 있습니다. abort 이전의 도구 효과는 되돌리지 않으며, 해당 turn은 정상 완료로 보고되지 않습니다. `abort`/`delete`/`archive` 응답은 확정적인 4xx에서만 모호성 표식을 지우며 `408`/`429`는 제외됩니다.
 
@@ -520,4 +622,4 @@ Node runtime은 20 이상, 테스트는 Node 22.18 이상(type stripping)입니�
 
 ## 라이선스와 버전
 
-버전 **v0.3.0** (design v0.3 + 과부하 대응), 라이선스 MIT([LICENSE](LICENSE); OpenCode에서 캡처한 조사 자료의 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). 조사에서 검증한 조합은 OpenCode `opencode-ai@1.18.33`, `@modelcontextprotocol/server@2.2.0`, Claude Code `2.1.284`, Node.js 20 이상(테스트 Node.js 22.18 이상), TypeScript `7.0.2`, `zod@4.6.5`, `esbuild@0.28.2`입니다.
+버전 **v0.4.0** (design v0.4 + 모델별 context 크기·run-slot 상한), 라이선스 MIT([LICENSE](LICENSE); OpenCode에서 캡처한 조사 자료의 고지는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). 조사에서 검증한 조합은 OpenCode `opencode-ai@1.18.33`, `@modelcontextprotocol/server@2.2.0`, Claude Code `2.1.284`, Node.js 20 이상(테스트 Node.js 22.18 이상), TypeScript `7.0.2`, `zod@4.6.5`, `esbuild@0.28.2`입니다.

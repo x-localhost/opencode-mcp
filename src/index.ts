@@ -145,6 +145,9 @@ export async function main(deps: MainDeps = {}): Promise<void> {
   const shutdownTimeoutMs = deps.shutdownTimeoutMs ?? config.cleanupTimeoutMs + MANAGED_SIGTERM_GRACE_MS + SHUTDOWN_MARGIN_MS;
 
   const logger = createLogger(config.logLevel);
+  if (config.defaultModel === undefined && Object.values(config.modelProfiles).some((profile) => profile.maxRunning !== undefined)) {
+    logger.warn('OPENCODE_MCP_MODEL_PROFILES sets maxRunning but OPENCODE_MCP_DEFAULT_MODEL is unset; turns without a model obey only the global cap.');
+  }
   const connectionCloseTimeoutMs = deps.connectionCloseTimeoutMs ?? config.cleanupTimeoutMs;
   const keepAlive = deps.keepAlive ?? defaultKeepAlive;
 

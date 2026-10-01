@@ -67,6 +67,10 @@ export interface OpencodeApiRetryable extends OpencodeApi {
 
 type Query = Record<string, string | number | undefined>;
 
+/** OpenCode's bundled models.dev snapshot measured about 6.15 MiB with 226 providers. */
+export const PROVIDER_CATALOG_MAX_BYTES = 32 * 1024 * 1024;
+const AGENT_CATALOG_MAX_BYTES = 2 * 1024 * 1024;
+
 // A6: every response/error body this adapter reads is streamed under a byte cap — never buffered
 // in full — so a misbehaving or compromised upstream cannot exhaust memory through an oversized
 // body. `sessionDiff`/`providerCatalog`/`agentCatalog`/`warmInstance` already had their own
@@ -669,13 +673,14 @@ function buildApi(opts: CreateOpencodeApiOptions): OpencodeApiRetryable {
       if (!providerSent.response.ok) {
         throw await errorFromResponse(providerSent);
       }
-      await readCatalog(providerSent, 2 * 1024 * 1024);
+      const providerCatalog = await readCatalog(providerSent, PROVIDER_CATALOG_MAX_BYTES);
 
       const agentSent = await send({ method: 'GET', path: 'agent', query: { directory }, req });
       if (!agentSent.response.ok) {
         throw await errorFromResponse(agentSent);
       }
-      await readCatalog(agentSent, 2 * 1024 * 1024);
+      await readCatalog(agentSent, AGENT_CATALOG_MAX_BYTES);
+      return { providerCatalog };
     },
 
     async disposeInstance(directory, req) {

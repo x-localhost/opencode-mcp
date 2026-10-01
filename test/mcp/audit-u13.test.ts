@@ -10,7 +10,13 @@ import assert from 'node:assert/strict';
 import { spawnStubServer } from './support/spawn-server.ts';
 import { JsonRpcClient } from './support/json-rpc-client.ts';
 import type { SpawnedServer } from './support/spawn-server.ts';
-import { buildErrorResult, createProgressSink, SERVER_INSTRUCTIONS } from '../../src/mcp/tools.ts';
+import { buildErrorResult, buildServerInstructions, createProgressSink } from '../../src/mcp/tools.ts';
+import { baseConfig } from '../opencode/support/base-config.ts';
+
+// Context-concurrency design §6: SERVER_INSTRUCTIONS became buildServerInstructions(config) (the
+// numbers it appends are only known once a Config exists). Every sentence this file pins below
+// lives in the unchanged base text, so a representative config is enough to exercise them.
+const SERVER_INSTRUCTIONS = buildServerInstructions(baseConfig());
 
 interface JsonSchemaProperty {
   description?: string;

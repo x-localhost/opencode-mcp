@@ -48,7 +48,7 @@ OpenCode 1.18.33에 포함된 `@ai-sdk/openai-compatible` provider로 gateway를
         "apiKey": "{env:INTERNAL_LLM_API_KEY}"
       },
       "models": {
-        "coding-model": {"name": "Internal Coding Model", "tool_call": true}
+        "coding-model": {"name": "Internal Coding Model", "tool_call": true, "limit": {"context": 128000, "output": 4096}}
       }
     }
   },
@@ -60,6 +60,10 @@ OpenCode 1.18.33에 포함된 `@ai-sdk/openai-compatible` provider로 gateway를
 ```
 
 `{env:INTERNAL_LLM_API_KEY}`는 OpenCode 프로세스 환경에서 읽습니다. key를 config에 직접 저장하지 말고 gateway의 streaming 및 tool calling을 확인합니다. `$schema`는 편집기 도움말용이며 외부 연결 허용을 뜻하지 않습니다.
+
+**모델별 `limit` (권장)**: 각 모델에 `limit: {context, output}`(필요하면 `input`도)을 실제 gateway/모델의 한계에 맞춰 지정하세요. `limit`이 없으면 `GET /provider`가 그 모델을 `{"limit":{"context":0,"output":0}}`으로 보고하며, 이 상태에서 OpenCode는 그 모델에 선제적 compaction(요약)을 전혀 하지 않고 매 요청마다 `max_tokens`를 32000으로 보냅니다(gateway가 더 작은 상한만 허용하면 거부될 수 있습니다). `limit`을 지정하면 OpenCode 자신의 선제적 compaction이 켜지고 올바른 `max_tokens`가 전송됩니다. `limit`을 config에 넣을 수 없는 배포는 opencode-mcp 쪽 `OPENCODE_MCP_MODEL_PROFILES`로 같은 정보를 알려줄 수 있지만, 그 경우 OpenCode 자신은 여전히 compaction하지 않습니다(§7, README [모델별 컨텍스트에 맞춘 작업 배분](../README.md#모델별-컨텍스트에-맞춘-작업-배분) 참고).
+
+**`enabled_providers` (권장)**: 위 예시처럼 지정하지 않으면 OpenCode 내장 models.dev catalog 전체(`GET /provider` 약 6.15 MiB, provider 226개)가 그대로 응답에 담겨 모든 turn과 `opencode-info section:"models"` 호출이 느려질 수 있습니다(opencode-mcp는 32 MiB까지 읽으므로 실패하지는 않습니다). `enabled_providers: ["corp"]`만 켜면 응답이 몇 KB로 줄어듭니다.
 
 ## 4. OpenCode runtime npm 및 TLS
 
@@ -149,6 +153,8 @@ Linux 경로 `/etc/claude-code/managed-mcp.json` 예시:
 2. 정상 provider 응답에서 반복 빈 stream/HTML/tool JSON이 발생하는지 확인하고 `OPENCODE_MCP_RESPONSE_LOOP_LIMIT`을 조정합니다. 기본값은 `6`, 허용값은 `3`–`20`, `0`은 watchdog 비활성화입니다.
 3. 통합 환경에서 `e2e/run-e2e.sh --only runaway`를 실행해 `UPSTREAM_RESPONSE_LOOP`과 후속 turn 복구를 검증합니다. gateway 과부하 시에는 `upstreamRetry`, 읽기 지연 시에는 `upstreamRead` 및 `OpenCode reads are delayed` 진행 메시지를 확인합니다.
 4. `Retry-After`가 길 때 admission/cleanup deadline의 operation 종료와 기존 세션 관찰 지침을 확인합니다. `SUBMISSION_UNCONFIRMED`에서는 prompt를 다시 보내지 않습니다.
+5. 동시 실행 cap이 실제로 적용되는지 `opencode-info section:"server"`로 확인합니다. `limits.maxRunningTurns`/`maxQueuedTurns`/`queueTimeoutSeconds`가 설정값과 일치하는지, `concurrency.running`/`queued`/`heldUnknown`/`available`이 기대한 범위인지, `capabilities`에 `run-queue`가 있는지 봅니다. cap을 넘는 turn을 동시에 보내 `queue` 객체가 붙는지, 큐까지 채워 `RUN_QUEUE_CAPACITY`가 제출 전에(아무것도 보내지 않고) 반환되는지 확인합니다.
+6. `OPENCODE_MCP_MODEL_PROFILES`를 설정했다면 `opencode-info section:"models"`로 각 모델의 `limit`, `usableInputTokens`, `limitSource`(`opencode`/`profile`/`mixed`), `maxRunning`, `serverDefault`가 기대값과 일치하는지 확인합니다. `limitSource`는 필드 단위 병합 결과입니다 — 같은 `limit` 필드(`context`/`input`/`output`)를 profile과 OpenCode config가 둘 다 정의하면 profile 쪽 값이 이기므로, 둘 다 설정했다고 해서 `limitSource`가 `opencode`가 되지는 않습니다. 현재 존재하는 `limit` 필드 전부가 profile에서 왔으면 `profile`, 전부 OpenCode에서만 왔으면 `opencode`, 일부만 profile에서 왔으면 `mixed`입니다(`maxRunning`만 설정한 profile은 `limitSource`를 바꾸지 않습니다). 의도적으로 큰 prompt를 보내 `OPENCODE_MCP_CONTEXT_GUARD=reject`(기본값)에서 제출 전 `PROMPT_TOO_LARGE`가 반환되는지(업스트림에 아무것도 보내지 않음) 확인합니다.
 
 ## 8. 설치 검증
 

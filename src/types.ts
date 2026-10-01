@@ -14,6 +14,9 @@ export type OnExit = 'abort' | 'end';
 export type ServerMode = 'managed' | 'attach';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+export interface ModelProfile { context?: number; input?: number; output?: number; maxRunning?: number }
+export type ContextGuard = 'reject' | 'off';
+
 export interface Config {
   mode: ServerMode;
   /** attach mode: base URL of an existing `opencode serve` (validated: no userinfo; https unless loopback or allowInsecureHttp). */
@@ -62,6 +65,16 @@ export interface Config {
    *  is rejected (SESSION_CAPACITY) before any upstream mutation — existing sessions are never
    *  evicted to make room. */
   maxSessions: number;
+  /** OPENCODE_MCP_MAX_RUNNING_TURNS: run slots; integer 0..256, 0 = unlimited. Default 4. */
+  maxRunningTurns: number;
+  /** OPENCODE_MCP_MAX_QUEUED_TURNS: queued run slots; integer 0..1024. Default 64. */
+  maxQueuedTurns: number;
+  /** OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS: 0 or 1..2147483 seconds; 0 = disabled. Default 0. */
+  queueTimeoutMs: number;
+  /** OPENCODE_MCP_MODEL_PROFILES: per-model limits and run caps. Default {}. */
+  modelProfiles: Record<string, ModelProfile>;
+  /** OPENCODE_MCP_CONTEXT_GUARD: prompt size guard; reject|off. Default reject. */
+  contextGuard: ContextGuard;
   endAction: EndAction;
   onExit: OnExit;
   logLevel: LogLevel;
@@ -143,6 +156,7 @@ export interface OcTokens {
   input: number;
   output: number;
   reasoning: number;
+  total?: number;
   cache?: { read: number; write: number };
 }
 
@@ -313,7 +327,9 @@ export interface OpencodeApi {
    * whole directory instance (docs/research/upstream-issues.md U1). Callers must not abort this
    * early: use a generous timeout and no caller cancellation signal.
    */
-  warmInstance(directory: string, req?: RequestOptions): Promise<void>;
+  /** Resolves with the parsed `/provider` body it already reads (context-concurrency design §5.3),
+   * so callers can project model limits from it without an extra request or re-parse. */
+  warmInstance(directory: string, req?: RequestOptions): Promise<{ providerCatalog: unknown }>;
   /** POST /instance/dispose?directory= — drops the directory instance and its caches (recovery). */
   disposeInstance(directory: string, req?: RequestOptions): Promise<boolean>;
   /**
@@ -402,7 +418,10 @@ export interface TurnResult {
     condition?: 'MODEL_OVERLOADED';
   };
   /** sum of assistant-message usage in this turn's execution interval */
-  tokens?: { input: number; output: number; reasoning: number };
+  tokens?: { input: number; output: number; reasoning: number; cache?: { read: number; write: number } };
+  queue?: TurnQueueInfo;
+  queuedMs?: number;
+  context?: TurnContextInfo;
   cost?: number;
   elapsedMs: number;
   truncated: boolean;
@@ -422,7 +441,7 @@ export interface TurnResult {
   finish?: string;
   /** At most 3 entries; each `message` <=200 chars. */
   warnings?: Array<{
-    code: 'EMPTY_RESPONSE' | 'TRUNCATED' | 'NONSTANDARD_FINISH';
+    code: 'EMPTY_RESPONSE' | 'TRUNCATED' | 'NONSTANDARD_FINISH' | 'CONTEXT_HIGH';
     message: string;
   }>;
   /** See overload design §B for exact meanings; `no_observed_effects` is intentionally weaker than
@@ -467,6 +486,39 @@ export interface SessionSummary {
   status: TurnStatus | 'idle' | 'ending' | 'quarantined';
   turns: number;
   updatedAt: number;
+  queue?: TurnQueueInfo;
+}
+
+export interface TurnQueueInfo {
+  /** 1-based position among queued tickets (oldest first); ordering hint, not a dispatch promise */
+  position: number;
+  /** turns holding a run slot right now (incl. heldUnknown) */
+  running: number;
+  /** null = unlimited */
+  maxRunning: number | null;
+  blockedBy: 'global' | 'model';
+  /** the submitted model this ticket is counted against, when known */
+  model?: string;
+  modelRunning?: number;
+  modelMaxRunning?: number;
+  /** milliseconds spent queued so far */
+  queuedMs: number;
+}
+
+export interface TurnContextInfo {
+  /** observed 'providerID/modelID' of the last non-summary assistant with usage */
+  model: string;
+  /** OpenCode overflow count of that assistant: tokens.total || input+output+cache.read+cache.write */
+  used?: number;
+  /** max of the same count over this turn's non-summary assistants */
+  peakUsed?: number;
+  /** OpenCode's usable input budget for that model (see §5.2); absent when the limit is unknown */
+  usableInputTokens?: number;
+  /** used / usableInputTokens rounded to 3 decimals; absent when either is absent */
+  ratio?: number;
+  limitSource?: 'opencode' | 'profile' | 'mixed';
+  /** compaction observed in this turn's interval (existing flag, result.ts:23-25) */
+  compacted: boolean;
 }
 
 export interface ListResult {
@@ -682,6 +734,7 @@ export interface InfoResult {
       approvalPolicy: ApprovalPolicy;
       turnTimeoutSeconds: number;
       maxTurnTimeoutSeconds: number;
+      contextGuard?: ContextGuard;
     };
     limits: {
       maxOutputChars: number;
@@ -690,11 +743,31 @@ export interface InfoResult {
       maxBatchIds: 16;
       outputRetention: { ttlSeconds: number; maxTurns: number; maxBytes: number };
       requestIds: { maxRecords: number; ttlSeconds: number };
+      maxSessions?: number;
+      maxRunningTurns?: number | null;
+      maxQueuedTurns?: number;
+      queueTimeoutSeconds?: number | null;
+    };
+    concurrency?: {
+      running: number;
+      queued: number;
+      heldUnknown: number;
+      available: number | null;
+      perModel: Array<{ model: string; maxRunning: number; running: number; queued: number }>;
+      perModelTotal: number;
+      perModelTruncated: boolean;
     };
     capabilities: string[];
     sandboxEnforcement: 'permission-profile';
   };
-  models?: Array<{ model: string; providerId: string; modelId: string; defaultForProvider: boolean; toolcall?: boolean }>;
+  models?: Array<{
+    model: string; providerId: string; modelId: string; defaultForProvider: boolean; toolcall?: boolean;
+    limit?: { context?: number; input?: number; output?: number };
+    usableInputTokens?: number;
+    limitSource?: 'opencode' | 'profile' | 'mixed';
+    maxRunning?: number;
+    serverDefault?: boolean;
+  }>;
   agents?: Array<{ name: string; mode: 'primary' | 'all' }>;
   roots?: string[];
   snapshotId?: string;
@@ -716,6 +789,10 @@ export interface BatchItem {
   status: TurnStatus | 'idle' | 'error';
   turnId?: string;
   turn?: number;
+  model?: string;
+  queue?: TurnQueueInfo;
+  queuedMs?: number;
+  context?: TurnContextInfo;
   executionState?: ExecutionState;
   cleanup?: 'complete' | 'unconfirmed';
   /** engine content (server-capped); MCP applies the aggregate budget */
@@ -802,7 +879,10 @@ export type EngineErrorCode =
   | 'REQUEST_ENDED'
   | 'REQUEST_CAPACITY'
   // FY-2 (v0.3 features contract follow-up fixes)
-  | 'SESSION_CAPACITY';
+  | 'SESSION_CAPACITY'
+  // Context concurrency design: run queue capacity and a prompt that exceeds known usable context.
+  | 'RUN_QUEUE_CAPACITY'
+  | 'PROMPT_TOO_LARGE';
 
 export class EngineError extends Error {
   code: EngineErrorCode;

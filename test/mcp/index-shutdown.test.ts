@@ -288,6 +288,86 @@ test('a configured cleanupTimeoutMs above 20s is no longer truncated by a fixed 
   }
 });
 
+// Context-concurrency design §2: startup warns once when a profile sets `maxRunning` but no
+// default model is configured (turns without a model obey only the global cap, never a per-model
+// one). Same stderr-spy pattern as the cleanupTimeoutMs test above.
+test('startup: a model profile with maxRunning and no default model logs exactly one warning', async () => {
+  const originalWrite = process.stderr.write;
+  const stderrLines: string[] = [];
+  process.stderr.write = ((chunk: string) => {
+    stderrLines.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+
+  try {
+    const h = makeHarness({
+      env: { OPENCODE_MCP_MODEL_PROFILES: '{"corp/one":{"maxRunning":2}}' },
+      engineShutdown: async () => {},
+      connectionClose: async () => {},
+    });
+    await h.mainPromise;
+
+    const warnLines = stderrLines.filter((line) =>
+      line.includes('OPENCODE_MCP_MODEL_PROFILES sets maxRunning but OPENCODE_MCP_DEFAULT_MODEL is unset'));
+    assert.equal(warnLines.length, 1, `expected exactly one warning line; got: ${JSON.stringify(stderrLines)}`);
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+});
+
+test('startup: no warning when a default model is configured, even with a maxRunning profile', async () => {
+  const originalWrite = process.stderr.write;
+  const stderrLines: string[] = [];
+  process.stderr.write = ((chunk: string) => {
+    stderrLines.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+
+  try {
+    const h = makeHarness({
+      env: {
+        OPENCODE_MCP_MODEL_PROFILES: '{"corp/one":{"maxRunning":2}}',
+        OPENCODE_MCP_DEFAULT_MODEL: 'corp/one',
+      },
+      engineShutdown: async () => {},
+      connectionClose: async () => {},
+    });
+    await h.mainPromise;
+
+    assert.ok(
+      !stderrLines.some((line) => line.includes('sets maxRunning but OPENCODE_MCP_DEFAULT_MODEL is unset')),
+      `must not warn when a default model is configured; got: ${JSON.stringify(stderrLines)}`,
+    );
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+});
+
+test('startup: no warning when no profile sets maxRunning', async () => {
+  const originalWrite = process.stderr.write;
+  const stderrLines: string[] = [];
+  process.stderr.write = ((chunk: string) => {
+    stderrLines.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+
+  try {
+    const h = makeHarness({
+      env: { OPENCODE_MCP_MODEL_PROFILES: '{"corp/one":{"context":1000,"output":100}}' },
+      engineShutdown: async () => {},
+      connectionClose: async () => {},
+    });
+    await h.mainPromise;
+
+    assert.ok(
+      !stderrLines.some((line) => line.includes('sets maxRunning but OPENCODE_MCP_DEFAULT_MODEL is unset')),
+      `must not warn when no profile sets maxRunning; got: ${JSON.stringify(stderrLines)}`,
+    );
+  } finally {
+    process.stderr.write = originalWrite;
+  }
+});
+
 test('an uncaught exception during shutdown escalates the exit code to 1', async () => {
   let resolveEngineShutdown: () => void = () => {};
   const h = makeHarness({

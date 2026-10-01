@@ -50,7 +50,18 @@
 //   * Last user text contains "STRUCTURED_AMBIGUOUS" -> text reply containing TWO ```json blocks.
 //   * Last user text contains "STRUCTURED_BADJSON"   -> text reply containing one (properly closed)
 //     ```json block whose body is not valid JSON.
+//   * Last user text contains "USAGE <promptTokens> [cachedTokens]" -> a plain text reply whose
+//     usage object reports prompt_tokens=<promptTokens>,
+//     prompt_tokens_details.cached_tokens=<cachedTokens||0>, completion_tokens=7,
+//     total_tokens=<promptTokens>+7 — in both the streamed (stream_options.include_usage) and
+//     non-streamed response shapes — for e2e/ctx-concurrency.test.mjs's per-turn context-usage
+//     scenario.
 //   * otherwise                               -> text "FAKE_REPLY: <echo of last user text (first 80 chars)>".
+//
+// Every recorded request (GET /__requests) also carries startMs/endMs (Date.now() at the time the
+// request was received / the time its response finished, was aborted, or errored), so a test can
+// measure how many requests overlapped at any instant (e2e/ctx-concurrency.test.mjs's run-cap
+// scenario).
 
 import http from "node:http"
 import fs from "node:fs"
@@ -169,6 +180,21 @@ function plan(body) {
   if (long) {
     return { kind: "text", text: buildLongText(Number(long[1])) }
   }
+  const usageDirective = userText.match(/\bUSAGE\s+(\d+)(?:\s+(\d+))?\b/)
+  if (usageDirective) {
+    const promptTokens = Number(usageDirective[1])
+    const cachedTokens = usageDirective[2] !== undefined ? Number(usageDirective[2]) : 0
+    return {
+      kind: "text",
+      text: `USAGE_REPLY ${promptTokens}`,
+      usage: {
+        prompt_tokens: promptTokens,
+        prompt_tokens_details: { cached_tokens: cachedTokens },
+        completion_tokens: 7,
+        total_tokens: promptTokens + 7,
+      },
+    }
+  }
   if (userText.includes("STRUCTURED_AMBIGUOUS")) {
     return {
       kind: "text",
@@ -218,6 +244,10 @@ function record(req, body, p) {
   const entry = {
     seq: ++seq,
     time: new Date().toISOString(),
+    // Wall-clock bounds of this request, for scenarios that measure how many requests overlapped
+    // at a given instant (e.g. a run-slot-cap test). endMs is filled in by dispatchChat() once the
+    // response is fully sent/aborted/errored; it is absent on a request still in flight.
+    startMs: Date.now(),
     method: req.method,
     url: req.url,
     headers: Object.fromEntries(
@@ -240,6 +270,7 @@ function record(req, body, p) {
   }
   requests.push(entry)
   if (LOG) fs.appendFileSync(LOG, JSON.stringify(entry) + "\n")
+  return entry
 }
 
 const usage = { prompt_tokens: 42, completion_tokens: 7, total_tokens: 49 }
@@ -394,7 +425,7 @@ async function streamResponse(res, body, p) {
     if (!aborted) send(chunk({}, "tool_calls"))
   }
   if (!aborted && body.stream_options?.include_usage) {
-    send({ id, object: "chat.completion.chunk", created, model, choices: [], usage })
+    send({ id, object: "chat.completion.chunk", created, model, choices: [], usage: p.usage ?? usage })
   }
   if (!aborted) {
     res.write("data: [DONE]\n\n")
@@ -424,10 +455,35 @@ async function jsonResponse(res, body, p) {
     created: Math.floor(Date.now() / 1000),
     model: body.model || "fake-model",
     choices: [{ index: 0, message, finish_reason: p.kind === "tool" ? "tool_calls" : "stop" }],
-    usage,
+    usage: p.usage ?? usage,
   }
   res.writeHead(200, { "content-type": "application/json" })
   res.end(JSON.stringify(out))
+}
+
+/** Dispatches one /chat/completions plan to its response, then always stamps entry.endMs (success,
+ * forced-error, or abort), so GET /__requests can report accurate [startMs, endMs] intervals. */
+async function dispatchChat(res, body, p, entry) {
+  try {
+    if (p.kind === "fail") {
+      res.writeHead(p.status, { "content-type": "application/json" })
+      return res.end(JSON.stringify({ error: { message: `fake-llm: forced ${p.status}`, type: "fake_error" } }))
+    }
+    if (p.kind === "overload-error") {
+      const headers = { "content-type": "application/json" }
+      if (p.retryAfter !== undefined) headers["retry-after"] = String(p.retryAfter)
+      res.writeHead(p.status, headers)
+      const messageByStatus = { 429: "Too Many Requests", 503: "Service Unavailable", 529: "overloaded" }
+      return res.end(JSON.stringify({ error: { message: messageByStatus[p.status] || "overloaded", type: p.status === 429 ? "rate_limit_error" : "overloaded_error", code: p.status === 429 ? "rate_limit_exceeded" : "overloaded" } }))
+    }
+    if (p.kind === "overload-html-body") {
+      res.writeHead(200, { "content-type": "text/html" })
+      return res.end("<html><head><title>502 Bad Gateway</title></head><body><h1>Bad Gateway</h1><p>The gateway is overloaded.</p></body></html>")
+    }
+    await (body.stream ? streamResponse(res, body, p) : jsonResponse(res, body, p))
+  } finally {
+    entry.endMs = Date.now()
+  }
 }
 
 const server = http.createServer(async (req, res) => {
@@ -455,24 +511,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && /\/chat\/completions$/.test(path)) {
       const body = raw ? JSON.parse(raw) : {}
       const p = plan(body)
-      record(req, body, p)
+      const entry = record(req, body, p)
       if (process.env.DUMP_DIR) fs.writeFileSync(`${process.env.DUMP_DIR}/req-${seq}.json`, JSON.stringify(body, null, 2))
-      if (p.kind === "fail") {
-        res.writeHead(p.status, { "content-type": "application/json" })
-        return res.end(JSON.stringify({ error: { message: `fake-llm: forced ${p.status}`, type: "fake_error" } }))
-      }
-      if (p.kind === "overload-error") {
-        const headers = { "content-type": "application/json" }
-        if (p.retryAfter !== undefined) headers["retry-after"] = String(p.retryAfter)
-        res.writeHead(p.status, headers)
-        const messageByStatus = { 429: "Too Many Requests", 503: "Service Unavailable", 529: "overloaded" }
-        return res.end(JSON.stringify({ error: { message: messageByStatus[p.status] || "overloaded", type: p.status === 429 ? "rate_limit_error" : "overloaded_error", code: p.status === 429 ? "rate_limit_exceeded" : "overloaded" } }))
-      }
-      if (p.kind === "overload-html-body") {
-        res.writeHead(200, { "content-type": "text/html" })
-        return res.end("<html><head><title>502 Bad Gateway</title></head><body><h1>Bad Gateway</h1><p>The gateway is overloaded.</p></body></html>")
-      }
-      return body.stream ? streamResponse(res, body, p) : jsonResponse(res, body, p)
+      // Not awaited (matches the pre-existing fire-and-forget shape for streamResponse/
+      // jsonResponse below): dispatchChat always stamps entry.endMs in its own finally once the
+      // response is fully sent, aborted, or errored, regardless of which branch handled it.
+      dispatchChat(res, body, p, entry)
+      return
     }
     record(req, null, { kind: "unhandled" })
     res.writeHead(404, { "content-type": "application/json" })

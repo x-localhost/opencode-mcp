@@ -27,8 +27,10 @@ import { resolveWorkingDirectory } from './paths.ts';
 import { sessionRulesFor } from './policy.ts';
 import { Registry } from './registry.ts';
 import type { Admission, MutationKind, MutationMarker, QuarantineRecovery, TrackedSession } from './registry.ts';
-import { classifyOutcome, compactResult, extractInterval, submissionEvidence, summarizeInterval } from './result.ts';
+import { buildContextResult, classifyOutcome, compactResult, contextOverflowHint, extractInterval, extractOutputArtifacts, submissionEvidence, summarizeInterval } from './result.ts';
 import { Turn } from './turn.ts';
+import { estimatePromptTokens, projectModelLimits, promptTooLargeMessage, resolveModelLimit } from './model-limits.ts';
+import type { ModelLimit, ResolvedModelLimit } from './model-limits.ts';
 import { OutputStore, DEFAULT_OUTPUT_STORE_LIMITS, refreshOutputMeta } from './output-store.ts';
 import { captureTarget, createBatchElicitor, observeTarget, snapshotTarget } from './observe-many.ts';
 import type { StoreError } from './output-store.ts';
@@ -40,6 +42,9 @@ import { CatalogCache, pageItems, projectAgents, projectModels, validId } from '
 import { SERVER_VERSION } from '../version.ts';
 import { ConnectionHealth } from './connection-health.ts';
 import { withReadRetry, isRetryableReadError } from '../opencode/retry.ts';
+import { RunSlots, runLimits } from './run-slots.ts';
+import type { RunTicket } from './run-slots.ts';
+import { PROVIDER_CATALOG_MAX_BYTES } from '../opencode/http.ts';
 import type { OpencodeApiRetryable } from '../opencode/http.ts';
 
 /** Diff snapshots refresh independently of the one-hour retained turn artifact. */
@@ -106,10 +111,82 @@ function outputPage<T extends { ok: true }>(value: T | StoreError, sessionId: st
 export function createEngine(deps: EngineDeps): Engine {
   const { config, connection, clock, logger } = deps;
   const registry = new Registry();
+  const limits = runLimits(config);
+  const slots = new RunSlots(limits, clock);
+  const pendingStarts = new Set<RunTicket>();
+  const heldTickets = new Map<string, Set<RunTicket>>();
+  const releaseHeld = (sessionId: string): void => {
+    const held = heldTickets.get(sessionId);
+    heldTickets.delete(sessionId);
+    for (const ticket of held ?? []) ticket.release();
+  };
+  const releaseHeldTicket = (sessionId: string, ticket: RunTicket): void => {
+    const held = heldTickets.get(sessionId);
+    if (!held?.delete(ticket)) return;
+    if (held.size === 0) heldTickets.delete(sessionId);
+    ticket.release();
+  };
   const outputStore = new OutputStore(clock);
   const serverInstanceId = randomUUID();
   const requests = new RequestRegistry(clock, serverInstanceId);
   const catalogs = new CatalogCache(clock);
+  // U4b: per-generation/directory model-limits cache fed by a successful warm-up (context-
+  // concurrency design §5.3) — separate from the paging snapshot cache above. Bounded LRU with a
+  // TTL on the injected clock, plus a global invalidation epoch so a warm that started before an
+  // invalidation can never repopulate a key after it (checked by storeLimits below).
+  const MAX_LIMITS_CACHE_ENTRIES = 64;
+  const LIMITS_CACHE_TTL_MS = 60_000;
+  const limitsCache = new Map<string, { limits: Map<string, ModelLimit>; expiresAtMono: number }>();
+  let limitsEpoch = 0;
+  const limitsCacheKey = (generation: number, directory: string): string => `${generation}\0${directory}`;
+  const invalidateLimits = (prefix: string): void => {
+    limitsEpoch++;
+    for (const key of limitsCache.keys()) if (key.startsWith(prefix)) limitsCache.delete(key);
+  };
+  const storeLimits = (generation: number, directory: string, providerCatalog: unknown, epochAtStart: number): void => {
+    if (limitsEpoch !== epochAtStart) return;
+    const key = limitsCacheKey(generation, directory);
+    limitsCache.delete(key);
+    limitsCache.set(key, { limits: projectModelLimits(providerCatalog), expiresAtMono: clock.monotonicNow() + LIMITS_CACHE_TTL_MS });
+    while (limitsCache.size > MAX_LIMITS_CACHE_ENTRIES) {
+      const oldestKey = limitsCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      limitsCache.delete(oldestKey);
+    }
+  };
+  /** Profiles apply even when the cache is cold or `generation` is unknown. */
+  const limitsFor = (generation: number | undefined, directory: string, modelName: string): ResolvedModelLimit | undefined => {
+    let upstream: ModelLimit | undefined;
+    if (generation !== undefined) {
+      const key = limitsCacheKey(generation, directory);
+      const entry = limitsCache.get(key);
+      if (entry) {
+        if (clock.monotonicNow() >= entry.expiresAtMono) limitsCache.delete(key);
+        else {
+          // LRU touch.
+          limitsCache.delete(key);
+          limitsCache.set(key, entry);
+          upstream = entry.limits.get(modelName);
+        }
+      }
+    }
+    return resolveModelLimit(modelName, upstream, config.modelProfiles?.[modelName]);
+  };
+  /** U4b prompt-size guard pre-check (context-concurrency design §5.4); synchronous, no awaits. */
+  const checkPromptSize = (
+    modelName: string | undefined,
+    generation: number | undefined,
+    directory: string,
+    prompt: string,
+    system: string,
+  ): void => {
+    if ((config.contextGuard ?? 'reject') === 'off' || !modelName) return;
+    const usable = limitsFor(generation, directory, modelName)?.usableInputTokens;
+    if (usable === undefined) return;
+    const estimated = estimatePromptTokens(prompt + system);
+    if (estimated > usable)
+      throw new EngineError('PROMPT_TOO_LARGE', promptTooLargeMessage(modelName, estimated, usable));
+  };
   const committedResults = new Map<string, Map<number, TurnResult>>();
   const committedOrder = new Map<string, { sessionId: string; turn: number }>();
   type KeyedReceipt = Pick<TurnResult, 'sessionId' | 'turnId' | 'turn' | 'status' | 'executionState' | 'cleanup'> &
@@ -195,6 +272,7 @@ export function createEngine(deps: EngineDeps): Engine {
   const clearWarm = (directory: string): void => {
     for (const key of warmed.keys()) if (key.endsWith(`\0${directory}`)) warmed.delete(key);
     catalogs.invalidate('');
+    invalidateLimits('');
   };
   const releaseDirectory = (state: DirectoryRecovery): void => {
     if (recovering.get(state.directory) !== state) return;
@@ -315,9 +393,11 @@ export function createEngine(deps: EngineDeps): Engine {
     const output = refreshOutputMeta(result.output, meta, clock.wallNow());
     return output === result.output ? result : { ...result, output };
   };
-  const settleRecovered = (entry: TrackedSession): void => {
-    const result = entry.last;
+  const settleRecovered = (entry: TrackedSession, recovered?: TurnResult, ticket?: RunTicket): void => {
+    const result = recovered ?? entry.last;
     if (!result || result.executionState !== 'stopped') return;
+    if (ticket) releaseHeldTicket(entry.id, ticket);
+    else releaseHeld(entry.id);
     requests.settleTurn(entry.id, result.turnId);
     // Refresh only an already-retained copy, so the per-session/process caps stay accounted.
     const retained = committedResults.get(entry.id);
@@ -385,6 +465,7 @@ export function createEngine(deps: EngineDeps): Engine {
     if (kind === 'unreachable') {
       for (const key of warmed.keys()) if (key.startsWith(`${generation}\0`)) warmed.delete(key);
       catalogs.invalidate(`${generation}\0`);
+      invalidateLimits(`${generation}\0`);
       return;
     }
     for (const state of recovering.values()) if (state.generation === generation) releaseDirectory(state);
@@ -392,6 +473,7 @@ export function createEngine(deps: EngineDeps): Engine {
       if (pendingGeneration === generation) pendingPoison.delete(directory);
     for (const key of warmed.keys()) if (key.startsWith(`${generation}\0`)) warmed.delete(key);
     catalogs.invalidate(`${generation}\0`);
+    invalidateLimits(`${generation}\0`);
     for (const entry of registry.all()) {
       for (const [key, marker] of entry.unresolvedMutations ?? [])
         if (marker.generation === generation) {
@@ -445,10 +527,11 @@ export function createEngine(deps: EngineDeps): Engine {
     const existing = warmed.get(key);
     if (existing) return existing;
     const timeoutMs = config.startupTimeoutMs || config.sseStallMs * 2;
+    const epochAtWarmStart = limitsEpoch;
     const task = (async () => {
       let cancel = () => {};
       try {
-        await Promise.race([
+        const result = await Promise.race([
           admissionDeadline === undefined
             ? lease.api.warmInstance(directory, { timeoutMs })
             : (() => {
@@ -466,6 +549,7 @@ export function createEngine(deps: EngineDeps): Engine {
             );
           }),
         ]);
+        storeLimits(lease.generation, directory, result.providerCatalog, epochAtWarmStart);
       } catch (error) {
         throw upstream(error);
       } finally {
@@ -479,11 +563,15 @@ export function createEngine(deps: EngineDeps): Engine {
     void task.then(clear, clear);
     return task;
   };
-  const bodyFor = (entry: TrackedSession, prompt: string, schema?: OutputSchema): PromptBody => {
-    const system = [entry.baseInstructions, entry.developerInstructions,
-      ...(schema ? [buildStructuredOutputInstruction(schema)] : [])]
+  // U4b: factored out of bodyFor so the prompt guard (checkPromptSize) measures exactly the
+  // prompt + system text the body would send (base/developer instructions and structured-output
+  // instructions included) — context-concurrency design §5.4.
+  const systemTextFor = (base: string | undefined, developer: string | undefined, schema?: OutputSchema): string =>
+    [base, developer, ...(schema ? [buildStructuredOutputInstruction(schema)] : [])]
       .filter((x) => x !== undefined && x !== '')
       .join('\n\n');
+  const bodyFor = (entry: TrackedSession, prompt: string, schema?: OutputSchema): PromptBody => {
+    const system = systemTextFor(entry.baseInstructions, entry.developerInstructions, schema);
     return {
       parts: [{ type: 'text', text: prompt }],
       ...(model(entry.model) ? { model: model(entry.model) } : {}),
@@ -539,6 +627,8 @@ export function createEngine(deps: EngineDeps): Engine {
     schema?: OutputSchema,
     keyed?: { record: RequestRecord; onTurn: (turn: Turn) => void },
     suppliedAdmissionDeadlineAt?: number,
+    ticket?: RunTicket,
+    onTicketTransfer?: () => void,
   ): Promise<TurnResult> => {
     const admissionDeadlineAt = suppliedAdmissionDeadlineAt ??
       clock.monotonicNow() + (config.startupTimeoutMs || config.sseStallMs * 2);
@@ -567,7 +657,7 @@ export function createEngine(deps: EngineDeps): Engine {
         entry.generation = lease.generation;
         const turn = new Turn(
           entry,
-          ++entry.turns,
+          entry.turns + 1,
           lease,
           connection,
           hub,
@@ -704,7 +794,32 @@ export function createEngine(deps: EngineDeps): Engine {
           },
           schema,
           admissionDeadlineAt,
+          ticket,
+          limits.queueTimeoutMs,
+          (held) => {
+            const set = heldTickets.get(entry.id) ?? new Set<RunTicket>();
+            set.add(held);
+            heldTickets.set(entry.id, set);
+          },
+          (recovered) => {
+            if (registry.find(entry.id) !== entry) {
+              if (ticket) releaseHeldTicket(entry.id, ticket);
+              return;
+            }
+            const wasLast = entry.last?.turnId === turn.id;
+            if (wasLast)
+              entry.last = { ...entry.last!, executionState: 'stopped', cleanup: recovered.cleanup,
+                resendSafety: 'not_submitted', hint: recovered.hint };
+            settleRecovered(entry, wasLast ? entry.last : recovered, ticket!);
+            entry.updatedAt = clock.wallNow();
+            if (wasLast && entry.phase !== 'ending')
+              entry.phase = recovered.cleanup === 'complete' && !entry.recovery &&
+                !entry.unresolvedMutations?.size && !entry.endFailure ? 'idle' : 'quarantined';
+          },
+          (modelName: string) => limitsFor(lease.generation, entry.directory, modelName),
         );
+        entry.turns++;
+        onTicketTransfer?.();
         entry.current = turn;
         turnBuilt = true;
         keyed?.onTurn(turn);
@@ -927,23 +1042,39 @@ export function createEngine(deps: EngineDeps): Engine {
           const outcome = classifyOutcome(interval, true, clock.wallNow(), ownRecord.activityObserved === true);
           const summary = summarizeInterval(interval, entry.directory, config.maxOutputChars, outcome);
           summary.toolCallCount = Math.max(summary.toolCallCount, ownRecord.maxToolCallCount ?? 0);
+          const { contextUsage, ...summaryRest } = summary;
           const loop = entry.last?.error?.name === 'UPSTREAM_RESPONSE_LOOP';
-          const hint = loop
+          const overflowModel = contextUsage?.model ?? entry.model ?? 'the model';
+          const baseHint = loop
             ? 'OpenCode was stopped after repeated unusable model responses. Check the model/gateway and inspect partial effects before trying again.'
-            : outcome.error?.name === 'EMPTY_RESPONSE'
-              ? 'OpenCode finished without answer text. No tool or patch activity was observed. Inspect the result, then retry once after a short wait if appropriate.'
-              : outcome.warnings?.some((warning) => warning.code === 'EMPTY_RESPONSE')
-                ? 'Tool activity occurred, but the final answer is empty. Inspect opencode-output and the turn diff before continuing.'
-                : outcome.warnings?.some((warning) => warning.code === 'TRUNCATED')
-                  ? 'The provider truncated the answer. Use opencode-reply to continue from the stopping point.'
-                  : releaseHint(entry, evidence.userId, outcome.status);
+            : outcome.error?.name === 'ContextOverflowError'
+              ? contextOverflowHint(overflowModel)
+              : outcome.error?.name === 'EMPTY_RESPONSE'
+                ? 'OpenCode finished without answer text. No tool or patch activity was observed. Inspect the result, then retry once after a short wait if appropriate.'
+                : outcome.warnings?.some((warning) => warning.code === 'EMPTY_RESPONSE')
+                  ? 'Tool activity occurred, but the final answer is empty. Inspect opencode-output and the turn diff before continuing.'
+                  : outcome.warnings?.some((warning) => warning.code === 'TRUNCATED')
+                    ? 'The provider truncated the answer. Use opencode-reply to continue from the stopping point.'
+                    : releaseHint(entry, evidence.userId, outcome.status);
+          // U4b: quarantine recovery recomputes context/warnings/hint the same way Turn.finish()
+          // does (context-concurrency design §5.3).
+          const resolvedLimit = contextUsage ? limitsFor(lease.generation, entry.directory, contextUsage.model) : undefined;
+          const { context, warnings: finalWarnings, hint } = buildContextResult(
+            contextUsage, extractOutputArtifacts(interval).compacted, resolvedLimit,
+            loop ? undefined : outcome.warnings, baseHint,
+          );
           releaseExpiredAborts(entry);
           entry.last = {
             ...entry.last,
-            ...summary,
+            ...summaryRest,
             status: loop ? 'failed' : outcome.status,
             error: loop ? entry.last.error : outcome.error,
-            ...(loop ? {} : { finish: outcome.finish, warnings: outcome.warnings }),
+            ...(loop ? {} : { finish: outcome.finish }),
+            // Explicitly replace (not merge) `warnings`/`context`: `entry.last` was just spread
+            // above, so without this, a recomputed empty `finalWarnings`/absent `context` would
+            // silently keep the pre-recovery turn's stale CONTEXT_HIGH warning/context forever.
+            warnings: finalWarnings && finalWarnings.length ? finalWarnings : undefined,
+            context,
             resendSafety: entry.unresolvedMutations?.size ? 'unknown' :
               ownRecord.activityObserved || interval.some((message) => message.parts.some((part) => part.type === 'tool' || part.type === 'patch'))
                 ? 'inspect_effects' : 'no_observed_effects',
@@ -1126,6 +1257,7 @@ export function createEngine(deps: EngineDeps): Engine {
       }
       clearSettled(entry, action);
       registry.delete(entry.id);
+      releaseHeld(entry.id);
       outputStore.dropSession(entry.id);
       committedResults.delete(entry.id);
       for (const [key, item] of committedOrder)
@@ -1277,13 +1409,15 @@ export function createEngine(deps: EngineDeps): Engine {
     try { return await Promise.race([work, cancelled]); }
     finally { cancelBeat(); removeAbort(); }
   };
-  const catalogError = (error: unknown): EngineError => {
+  const catalogError = (error: unknown, section: InfoInput['section']): EngineError => {
+    const sizeMessage = section === 'models'
+      ? 'OpenCode catalog exceeds the 32 MiB limit' : 'OpenCode catalog exceeds the 2 MiB limit';
     if (error instanceof EngineError) {
       if (error.message === 'Discovery call cancelled') return error;
       return new EngineError(error.code === 'UPSTREAM_RESPONSE_TOO_LARGE' || error.code === 'OPENCODE_OVERLOADED' ? error.code :
         error.code === 'OPENCODE_UNAVAILABLE' ? error.code : 'UPSTREAM_ERROR',
         error.code === 'UPSTREAM_RESPONSE_TOO_LARGE'
-          ? 'OpenCode catalog exceeds the 2 MiB limit' : 'OpenCode catalog request failed', undefined,
+          ? sizeMessage : 'OpenCode catalog request failed', undefined,
         error.retryAfterSeconds);
     }
     if (error instanceof OpencodeHttpError) {
@@ -1291,7 +1425,7 @@ export function createEngine(deps: EngineDeps): Engine {
         : error.classification === 'overloaded' ? 'OPENCODE_OVERLOADED'
         : error.status === 0 ? 'OPENCODE_UNAVAILABLE' : 'UPSTREAM_ERROR';
       return new EngineError(code, code === 'UPSTREAM_RESPONSE_TOO_LARGE'
-        ? 'OpenCode catalog exceeds the 2 MiB limit' : 'OpenCode catalog request failed', undefined,
+        ? sizeMessage : 'OpenCode catalog request failed', undefined,
         code === 'OPENCODE_OVERLOADED' && error.retryAfterSeconds !== undefined
           ? Math.min(3600, error.retryAfterSeconds) : undefined);
     }
@@ -1326,6 +1460,8 @@ export function createEngine(deps: EngineDeps): Engine {
         (config.startupTimeoutMs || config.sseStallMs * 2);
       let created = false;
       let entryId: string | undefined;
+      let ticket: RunTicket | undefined;
+      let transferred = false;
       try {
         // FZ #1: reserve capacity SYNCHRONOUSLY, before any upstream mutation (acquire() included)
         // and before any await at all — a pending-creation counter is checked together with the
@@ -1342,6 +1478,11 @@ export function createEngine(deps: EngineDeps): Engine {
           );
         let capacityReserved = true;
         try {
+          // Context guard: synchronous prompt-size pre-check before reserving a run slot.
+          checkPromptSize(input.model ?? config.defaultModel, connection.current()?.generation, directory,
+            input.prompt, systemTextFor(input.baseInstructions, input.developerInstructions, schema));
+          ticket = slots.reserve(input.model ?? config.defaultModel);
+          pendingStarts.add(ticket);
           const admissionRemaining = admissionDeadlineAt - clock.monotonicNow();
           if (admissionRemaining <= 0)
             throw new EngineError('OPENCODE_UNAVAILABLE', 'Session admission deadline expired');
@@ -1393,7 +1534,10 @@ export function createEngine(deps: EngineDeps): Engine {
           ctx.setSessionId?.(entry.id);
           const result = await launch(entry, input.prompt, timeout, ctx, wait, schema,
             record ? { record, onTurn: (turn) => requests.admitted(record, { sessionId: entry.id, turnId: turn.id, turn: turn.number }) } : undefined,
-            admissionDeadlineAt);
+            admissionDeadlineAt, ticket, () => {
+              transferred = true;
+              pendingStarts.delete(ticket!);
+            });
           return record ? keyedResult(result, record, false) : result;
         } finally {
           if (capacityReserved) registry.releaseCreation();
@@ -1405,6 +1549,9 @@ export function createEngine(deps: EngineDeps): Engine {
           else requests.failed(record, { code: reason.code, message: reason.message });
         }
         throw error;
+      } finally {
+        if (ticket && !transferred && ticket.state !== 'released' && ticket.state !== 'cancelled') ticket.release();
+        if (ticket) pendingStarts.delete(ticket);
       }
     },
     async reply(input: ReplyInput, ctx: CallContext): Promise<TurnResult> {
@@ -1421,15 +1568,27 @@ export function createEngine(deps: EngineDeps): Engine {
       if (reservation?.kind === 'duplicate')
         return duplicateResult(reservation.record, reservation.settled, ctx, wait);
       const record = reservation?.record;
+      let ticket: RunTicket | undefined;
+      let transferred = false;
+      let replyEntry: TrackedSession | undefined;
+      let replyReserved = false;
       try {
         const entry = registry.get(input.sessionId);
+        const effectiveModel = input.model ?? entry.model;
+        // Context guard: synchronous prompt-size pre-check before reserving a run slot.
+        checkPromptSize(effectiveModel, connection.current()?.generation, entry.directory, input.prompt,
+          systemTextFor(entry.baseInstructions, input.developerInstructions ?? entry.developerInstructions, schema));
         registry.reserveReply(entry);
+        replyEntry = entry;
+        replyReserved = true;
+        ticket = slots.reserve(effectiveModel);
         if (input.model !== undefined) entry.model = input.model;
         if (input.agent !== undefined) entry.agent = input.agent;
         if (input.developerInstructions !== undefined)
           entry.developerInstructions = input.developerInstructions;
         const result = await launch(entry, input.prompt, timeout, ctx, wait, schema,
-          record ? { record, onTurn: (turn) => requests.admitted(record, { sessionId: entry.id, turnId: turn.id, turn: turn.number }) } : undefined);
+          record ? { record, onTurn: (turn) => requests.admitted(record, { sessionId: entry.id, turnId: turn.id, turn: turn.number }) } : undefined,
+          undefined, ticket, () => { transferred = true; });
         return record ? keyedResult(result, record, false) : result;
       } catch (error) {
         if (record) {
@@ -1437,6 +1596,9 @@ export function createEngine(deps: EngineDeps): Engine {
           requests.failed(record, { code: reason.code, message: reason.message });
         }
         throw error;
+      } finally {
+        if (ticket && !transferred && ticket.state !== 'released' && ticket.state !== 'cancelled') ticket.release();
+        if (replyReserved && !ticket && replyEntry) registry.releaseReply(replyEntry);
       }
     },
     async status(input: { sessionId: string; waitSeconds?: number }, ctx: CallContext): Promise<TurnResult> {
@@ -1462,6 +1624,8 @@ export function createEngine(deps: EngineDeps): Engine {
         if (input.provider !== undefined || input.cwd !== undefined)
           throw new EngineError('INVALID_ARGUMENT', 'Server info does not support provider or cwd');
         const lease = connection.current();
+        const concurrency = slots.snapshot();
+        const perModelTotal = concurrency.perModel.length;
         return { kind: 'info', status: 'ok', section, content: 'OpenCode MCP server information', truncated: false,
           server: { mcpVersion: SERVER_VERSION, serverInstanceId, mode: config.mode,
             remotePaths: config.remotePaths,
@@ -1470,15 +1634,21 @@ export function createEngine(deps: EngineDeps): Engine {
             defaults: { cwd: config.defaultCwd, model: config.defaultModel ?? null,
               agent: config.defaultAgent ?? null, sandbox: config.defaultSandbox,
               approvalPolicy: config.defaultApprovalPolicy, turnTimeoutSeconds: config.turnTimeoutMs / 1000,
-              maxTurnTimeoutSeconds: config.maxTurnTimeoutMs / 1000 },
+              maxTurnTimeoutSeconds: config.maxTurnTimeoutMs / 1000,
+              contextGuard: config.contextGuard ?? 'reject' },
             limits: { maxOutputChars: config.maxOutputChars, structuredContentBudget: 45000,
               maxWaitSeconds: 600, maxBatchIds: 16,
+              maxSessions: config.maxSessions, maxRunningTurns: limits.maxRunning,
+              maxQueuedTurns: limits.maxQueued,
+              queueTimeoutSeconds: limits.queueTimeoutMs === null ? null : limits.queueTimeoutMs / 1000,
               outputRetention: { ttlSeconds: DEFAULT_OUTPUT_STORE_LIMITS.ttlMs / 1000,
                 maxTurns: DEFAULT_OUTPUT_STORE_LIMITS.maxTurns, maxBytes: DEFAULT_OUTPUT_STORE_LIMITS.maxBytes },
               requestIds: { maxRecords: DEFAULT_REQUEST_REGISTRY_LIMITS.maxRecords,
                 ttlSeconds: DEFAULT_REQUEST_REGISTRY_LIMITS.ttlMs / 1000 } },
+            concurrency: { ...concurrency, perModel: concurrency.perModel.slice(0, 32),
+              perModelTotal, perModelTruncated: perModelTotal > 32 },
             capabilities: ['output-paging', 'per-turn-diff', 'structured-output', 'request-id', 'discovery',
-              'batch-status'],
+              'batch-status', 'run-queue', 'model-limits', 'context-usage'],
             sandboxEnforcement: 'permission-profile' } };
       }
       if (input.provider !== undefined && section !== 'models')
@@ -1498,7 +1668,7 @@ export function createEngine(deps: EngineDeps): Engine {
       let lease: ConnectionLease | undefined;
       if (section !== 'roots') {
         try { lease = await infoWait(acquire(), ctx); }
-        catch (error) { throw catalogError(error); }
+        catch (error) { throw catalogError(error, section); }
       }
       const key = section === 'roots' ? 'roots' : `${lease!.generation}\0${directory}\0${section}`;
       let snapshot = input.snapshotId && offset > 0 ? catalogs.byId<unknown>(key, input.snapshotId) : catalogs.current<unknown>(key);
@@ -1515,17 +1685,20 @@ export function createEngine(deps: EngineDeps): Engine {
           });
         } else {
           try { await infoWait(warmDirectory(lease!, directory), ctx); }
-          catch (error) { throw catalogError(error); }
+          catch (error) { throw catalogError(error, section); }
           if (ctx.signal.aborted) throw new EngineError('OPENCODE_UNAVAILABLE', 'Discovery call cancelled');
-          const opts = { timeoutMs: config.requestTimeoutMs, maxBytes: 2 * 1024 * 1024 };
+          const opts = { timeoutMs: config.requestTimeoutMs,
+            maxBytes: section === 'models' ? PROVIDER_CATALOG_MAX_BYTES : 2 * 1024 * 1024 };
           try {
             const raw = section === 'models'
               ? await infoWait(lease!.api.providerCatalog(directory, opts), ctx)
               : await infoWait(lease!.api.agentCatalog(directory, opts), ctx);
-            const projected = section === 'models' ? projectModels(raw) : projectAgents(raw);
+            const projected = section === 'models'
+              ? projectModels(raw, undefined, { profiles: config.modelProfiles, defaultModel: config.defaultModel })
+              : projectAgents(raw);
             items = projected.items;
             dropped = projected.dropped;
-          } catch (error) { throw catalogError(error); }
+          } catch (error) { throw catalogError(error, section); }
         }
         snapshot = catalogs.put(key, items, dropped);
       }
@@ -1733,6 +1906,7 @@ export function createEngine(deps: EngineDeps): Engine {
               : (e.last?.status ?? 'idle'),
         turns: e.turns,
         updatedAt: e.updatedAt,
+        ...(e.current?.snapshot().queue ? { queue: e.current.snapshot().queue } : {}),
       }));
       return {
         kind: 'sessions',
@@ -1785,7 +1959,10 @@ export function createEngine(deps: EngineDeps): Engine {
     },
     shutdown(_reason: string): Promise<void> {
       if (shutdownPromise) return shutdownPromise;
+      slots.close();
       shuttingDown = true;
+      for (const ticket of pendingStarts)
+        if (ticket.state !== 'released' && ticket.state !== 'cancelled') ticket.release();
       // Freeze every admission before cleanup begins or a late acquire can POST.
       for (const entry of registry.all()) if (entry.admission) entry.admission.stopRequested = true;
       shutdownPromise = (async () => {

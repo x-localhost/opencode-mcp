@@ -102,7 +102,7 @@ test('R1: a session.error before dispatch cannot certify this prompt failed', as
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  connection.api.warmInstance = async () => gate;
+  connection.api.warmInstance = async () => { await gate; return { providerCatalog: {} }; };
   connection.api.onPrompt = (id) => {
     connection.api.histories.get(id)!.push(message('m01', 'user'), message('m02', 'assistant', 'stop'));
   };

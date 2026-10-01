@@ -16,13 +16,15 @@ with `OCMCP_REMOTE_HOST`. `e2e/run-e2e.sh` does the rsync/ssh/docker plumbing fo
 ```
 e2e/run-e2e.sh                     # scenarios a-i (+ FAIL400/cancel-during-bash/timeout-during-bash/attach),
                                     # the F9 v0.3 feature scenarios (features.test.mjs), the overload
-                                    # scenarios (overload.test.mjs), plus the node:20 bundle smoke (j)
+                                    # scenarios (overload.test.mjs), the context-concurrency scenarios
+                                    # (ctx-concurrency.test.mjs), plus the node:20 bundle smoke (j)
                                     # and the npm packaging check
 e2e/run-e2e.sh --only cancel       # only tests whose name contains "cancel"
 e2e/run-e2e.sh --only pack         # only the npm packaging check
 e2e/run-e2e.sh --only attach       # only the attach-mode scenario (handy for iterating on it alone)
 e2e/run-e2e.sh --only diff         # only the per-turn-diff feature scenario
 e2e/run-e2e.sh --only runaway      # only the response-loop-watchdog overload scenarios
+e2e/run-e2e.sh --only "run cap"    # only the run-slot-cap context-concurrency scenario
 e2e/run-e2e.sh --keep              # keep temp repos/dirs inside the container on failure
 e2e/run-e2e.sh --with-claude       # also build claude-code into the image and run stretch (k)
 ```
@@ -42,9 +44,12 @@ scenarios (`e2e/features.test.mjs`, its own step) add roughly another 30-60s, do
 long-answer-paging scenario's dozens of `opencode-output` round trips. The overload scenarios
 (`e2e/overload.test.mjs`, its own step) add roughly another 2-3 minutes, dominated by the
 `529-always` scenario (OpenCode's own bounded provider-retry backoff, ~60-70s of real wall time)
-and the `tool-steps` scenario (20 sequential real tool round trips). The node:20 bundle smoke
-(j) and the npm packaging check are each a few seconds. The stretch scenario (k) adds another
-20-60s and installs `@anthropic-ai/claude-code` into the image, so it is opt-in.
+and the `tool-steps` scenario (20 sequential real tool round trips). The context-concurrency
+scenarios (`e2e/ctx-concurrency.test.mjs`, its own step) add roughly another 30-60s, dominated by
+the run-slot-cap scenario's four `SLOW_REPLY` turns running two-at-a-time and the large-catalog
+regression parsing a ~6 MiB `/provider` body. The node:20 bundle smoke (j) and the npm packaging
+check are each a few seconds. The stretch scenario (k) adds another 20-60s and installs
+`@anthropic-ai/claude-code` into the image, so it is opt-in.
 
 ## What each scenario proves (docs/design.md §9)
 
@@ -102,6 +107,22 @@ carry a non-empty `tools` array (OpenCode's own title/summary calls never do).
 | 529-always | `OVERLOAD_529_ALWAYS` (`wait-seconds:0`, then polling `opencode-status`) surfaces at least one running snapshot with `upstreamRetry.attempt>=1` while OpenCode's own bounded backoff (2/4/8/16/30s, ~60-70s wall time) runs its course, then a final `status:"failed"`, `error.statusCode:529`, `error.condition:"MODEL_OVERLOADED"`, `isError:true` — with at most 6 scenario LLM requests total (1 initial + OpenCode's own capped 5 retries), proving opencode-mcp never amplifies the load itself. |
 | slow-first-token | `OVERLOAD_SLOW_FIRST_TOKEN 40` completes normally; 40s of silence before the first token is never mistaken for a loop (there is no sequence of *completed* unproductive attempts). |
 
+### Context-concurrency scenarios (docs/design.md §13; `ctx-concurrency.test.mjs`, own run-e2e.sh step)
+
+Context-aware model assignment + run-slot concurrency cap (design.md §13). Letters a-g here are
+this file's own scenario list. "Build requests" below counts only chat-completions requests that
+carry a non-empty `tools` array, same convention as the overload scenarios above.
+
+| # | Proves |
+|---|---|
+| a: models info | `opencode-info section:"models"` reports, per model, the upstream `limit`, the derived `usableInputTokens` (OpenCode's overflow-budget formula), `limitSource` (`"opencode"`/`"profile"`/`"mixed"`), and a profile's `maxRunning`; section `"server"` reports `limits.maxRunningTurns`/`maxQueuedTurns` and a live `concurrency` object, and `capabilities` includes `run-queue`/`model-limits`/`context-usage`. |
+| b: PROMPT_TOO_LARGE pre-check | An ~80,000-char prompt that clearly cannot fit the model is rejected (`error.name:"PROMPT_TOO_LARGE"`) before it ever reaches the fake LLM; with `OPENCODE_MCP_CONTEXT_GUARD=off`, the same prompt is actually submitted (outcome not asserted). |
+| c: context usage | A `USAGE 12000` turn on a 16000/2000-limit model reports `context.used`/`usableInputTokens:14000`/`ratio>=0.8` and a `CONTEXT_HIGH` warning; `USAGE 1000` has no such warning. |
+| d: run cap | `OPENCODE_MCP_MAX_RUNNING_TURNS=2` with four `wait-seconds:0` `SLOW_REPLY` starts: at least two results carry a `queue` object (`status:"running"`, `resendSafety:"not_submitted"`); all four complete via `opencode-status` `ids`/`wait-for:"all"`; the fake LLM's own recorded `[startMs,endMs]` intervals for build requests never show more than 2 overlapping at once; only the turns that were actually queued report a `queuedMs` afterward. |
+| e: cancel a queued turn | With a cap of 1, a queued second turn is `opencode-cancel`led (`status:"cancelled"`, `resendSafety:"not_submitted"`) and the fake LLM never receives its prompt (checked via a unique marker string); the first (running) turn still completes normally. |
+| f: per-model cap | A profile's `maxRunning:1` on one model queues a second same-model turn (`queue.blockedBy:"model"`) while a turn on a different model keeps running unblocked; all three complete. |
+| g: large catalog regression | An OpenCode config without `enabled_providers` (so `/provider` is the ~6 MiB bundled models.dev snapshot, `OPENCODE_DISABLE_MODELS_FETCH=1` still set) still completes a turn and `opencode-info section:"models"` still lists the custom provider's models (design.md §5.1's 32 MiB catalog-cap fix). |
+
 ## Files
 
 - `Dockerfile` — `node@sha256:...` (22.23.3) + `ripgrep` + `git` + `opencode-ai@1.18.33`
@@ -113,9 +134,15 @@ carry a non-empty `tools` array (OpenCode's own title/summary calls never do).
   tests; stops cleanly if the caller aborts), `FAIL500`/`FAIL400` (forced upstream errors),
   `LONG_REPLY <chars>` (deterministic long multi-byte text, `lib/long-text.mjs`),
   `STRUCTURED_VALID <json>` / `STRUCTURED_AMBIGUOUS` / `STRUCTURED_BADJSON` (scripted
-  ```json-fenced replies for the structured-output scenario). Every recorded request (`GET
-  /__requests`) also carries a full role+text `messages` projection, not just roles, so tests can
-  assert exactly where a given piece of text did or did not appear.
+  ```json-fenced replies for the structured-output scenario), `USAGE <promptTokens> [cachedTokens]`
+  (a plain text reply whose usage object reports exactly that `prompt_tokens`/
+  `prompt_tokens_details.cached_tokens`/`completion_tokens:7`/`total_tokens`, in both the streamed
+  and non-streamed response shapes — for `ctx-concurrency.test.mjs`'s context-usage scenario).
+  Every recorded request (`GET /__requests`) also carries a full role+text `messages` projection,
+  not just roles, so tests can assert exactly where a given piece of text did or did not appear,
+  and `startMs`/`endMs` wall-clock bounds (the latter filled in once the response finishes, is
+  aborted, or errors), so a test can measure how many requests overlapped at any instant (the
+  run-slot-cap scenario).
 - `lib/long-text.mjs` — deterministic long-text generator shared between `fake-llm-server.mjs` and
   `features.test.mjs`'s long-answer-paging scenario, so both sides compute the same text without
   ever sending it over the wire for comparison.
@@ -128,7 +155,11 @@ carry a non-empty `tools` array (OpenCode's own title/summary calls never do).
 - `lib/stub-server.mjs` — a tiny hand-rolled MCP-ish server (no deps) used only to validate
   `mcp-client.mjs` in isolation before/without a real opencode-mcp build.
 - `lib/harness.mjs` — shared scenario setup: temp git repos under `/work`, a fake-LLM instance
-  per scenario, the `OPENCODE_CONFIG_CONTENT` fake-provider config, the `OPENCODE_MCP_*` env
+  per scenario, the `OPENCODE_CONFIG_CONTENT` fake-provider config (`buildOpencodeConfig`'s
+  `models` option declares several models — each with its own, optional, `limit` block — under the
+  one fake provider, for `ctx-concurrency.test.mjs`'s model-sizing scenarios; `omitEnabledProviders`
+  drops `enabled_providers` entirely for its large-catalog regression; both default to today's
+  single-model, `enabled_providers:['fake']` behaviour, unchanged), the `OPENCODE_MCP_*` env
   assembly, `waitForFakeLlmRequest` (poll the fake LLM's request log instead of a fixed sleep),
   and `startExternalOpencodeServer`/`pickFreePort` (spawn a real `opencode serve` directly, for
   the `attach` scenario).
@@ -144,6 +175,11 @@ carry a non-empty `tools` array (OpenCode's own title/summary calls never do).
 - `overload.test.mjs` — the overload-robustness scenarios (see the table above); `node --test`, plain JS, its own `run-e2e.sh` step so it
   never re-runs (or is re-run by) `scenarios.test.mjs`/`features.test.mjs`. Deliberately does not
   import either (same reason); its own tiny setup-helper copies live in its own header.
+- `ctx-concurrency.test.mjs` — the context-aware model sizing + run-slot cap scenarios (see the
+  table above; docs/design.md §13); `node --test`, plain JS, its own
+  `run-e2e.sh` step so it never re-runs (or is re-run by) any other scenario file. Deliberately
+  does not import any of them (same reason); its own tiny setup-helper copies live in its own
+  header, including its own `buildOpencodeConfig({ models, omitEnabledProviders })` usage.
 - `bundle-smoke.mjs` — scenario j (plain script, run directly under node:20).
 - `packaging-check.mjs` — the npm packaging check (plain script, run after `npm install -g` in a
   clean container; see the table above).

@@ -509,12 +509,13 @@ test('rejectQuestion returns false on 404 and true on success', async () => {
   });
 });
 
-test('warmInstance() GETs /provider then /agent with the directory, and resolves on success', async () => {
+test('warmInstance() GETs /provider then /agent with the directory, and resolves with the parsed /provider body', async () => {
   await withServer({}, async (server) => {
     const api = createOpencodeApi({ baseUrl: server.baseUrl, username: 'opencode', requestTimeoutMs: 2000, logger: nullLogger() });
-    await api.warmInstance('/work/proj');
+    const result = await api.warmInstance('/work/proj');
     assert.deepEqual(server.providerCalls, ['/work/proj']);
     assert.deepEqual(server.agentCalls, ['/work/proj']);
+    assert.deepEqual(result, { providerCatalog: { all: [], default: {}, connected: [] } });
   });
 });
 

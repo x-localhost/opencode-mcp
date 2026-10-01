@@ -118,19 +118,46 @@ export async function startFakeLlm({ label = 'llm', env = {} } = {}) {
 }
 
 /**
- * Builds OPENCODE_CONFIG_CONTENT (docs/research/opencode-offline.md §3): a single fake provider
- * routed to the fake LLM, enabled_providers restricted to it, share/autoupdate off.
+ * Builds OPENCODE_CONFIG_CONTENT (docs/research/opencode-offline.md §3): one fake provider routed
+ * to the fake LLM, enabled_providers restricted to it (unless omitted), share/autoupdate off.
  * @param {object} opts
  * @param {string} opts.baseUrl fake LLM's http://host:port (no /v1 suffix)
  * @param {Record<string,string>} [opts.permission] e.g. {bash:"ask"} for the approval scenarios
  * @param {string} [opts.apiKey] default 'fake-key'; override with a sentinel value to assert it
  *   never leaks into an MCP-facing result (e.g. e2e/features.test.mjs's opencode-info scenario).
+ * @param {Array<{id: string, limit?: {context?: number, input?: number, output?: number}, name?: string}>} [opts.models]
+ *   declares several models under the one 'fake' provider, each with its own (optional) `limit`
+ *   block — e.g. `[{id:'small', limit:{context:16000,output:2000}}, {id:'nolimit'}]` for
+ *   e2e/ctx-concurrency.test.mjs's model-sizing scenarios. Default (omitted): today's single
+ *   `fake-model` entry with `limit:{context:128000,output:4096}`, byte-for-byte unchanged from
+ *   before this option existed. The config's top-level `model`/`small_model` is
+ *   `fake/<models[0].id>`.
+ * @param {boolean} [opts.omitEnabledProviders] when true, does not set `enabled_providers` at all,
+ *   so OpenCode serves its full bundled models.dev catalog (~6 MiB) alongside the fake provider —
+ *   for e2e/ctx-concurrency.test.mjs's large-catalog regression scenario (design.md §5.1/probe
+ *   providerBodySize). Default false (the documented, smaller/faster `enabled_providers:['fake']`
+ *   catalog every other scenario relies on).
  */
-export function buildOpencodeConfig({ baseUrl, permission, apiKey = 'fake-key' } = {}) {
+export function buildOpencodeConfig({ baseUrl, permission, apiKey = 'fake-key', models, omitEnabledProviders = false } = {}) {
+  const modelsRecord = {};
+  let primaryModel;
+  if (models && models.length > 0) {
+    for (const m of models) {
+      modelsRecord[m.id] = {
+        name: m.name ?? m.id,
+        tool_call: true,
+        ...(m.limit ? { limit: m.limit } : {}),
+      };
+    }
+    primaryModel = `fake/${models[0].id}`;
+  } else {
+    modelsRecord['fake-model'] = { name: 'Fake Model', tool_call: true, limit: { context: 128000, output: 4096 } };
+    primaryModel = 'fake/fake-model';
+  }
   const config = {
-    model: 'fake/fake-model',
-    small_model: 'fake/fake-model',
-    enabled_providers: ['fake'],
+    model: primaryModel,
+    small_model: primaryModel,
+    ...(omitEnabledProviders ? {} : { enabled_providers: ['fake'] }),
     autoupdate: false,
     share: 'disabled',
     provider: {
@@ -138,7 +165,7 @@ export function buildOpencodeConfig({ baseUrl, permission, apiKey = 'fake-key' }
         npm: '@ai-sdk/openai-compatible',
         name: 'Fake LLM',
         options: { baseURL: `${baseUrl}/v1`, apiKey },
-        models: { 'fake-model': { name: 'Fake Model', tool_call: true, limit: { context: 128000, output: 4096 } } },
+        models: modelsRecord,
       },
     },
   };

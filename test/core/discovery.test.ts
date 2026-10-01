@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CatalogCache, pageItems, projectAgents, projectModels } from '../../src/core/discovery.ts';
+import type { ModelProfile } from '../../src/types.ts';
 
 const provider = {
   all: [
@@ -36,13 +37,56 @@ test('projects connected active models through the allowlist', () => {
             capabilities: { toolcall: true },
             options: { apiKey: 'SENTINEL-SECRET-123' },
             headers: { secret: 'SENTINEL-SECRET-123' },
+            limit: { context: 128000, output: 4096, apiKey: 'SENTINEL-SECRET-123' },
           },
         },
       },
     ],
   };
-  assert.equal(projectModels(hostile).items.length, 1);
-  assert.equal(JSON.stringify(projectModels(hostile)).includes('SENTINEL-SECRET-123'), false);
+  const hostileResult = projectModels(hostile);
+  assert.equal(hostileResult.items.length, 1);
+  assert.deepEqual(hostileResult.items[0]!.limit, { context: 128000, output: 4096 });
+  assert.equal(JSON.stringify(hostileResult).includes('SENTINEL-SECRET-123'), false);
+});
+
+const providerWithLimits = {
+  all: [{ id: 'corp', models: {
+    'coding-model': { status: 'active', limit: { context: 128000, output: 4096 } },
+    'zero-model': { status: 'active', limit: { context: 0, output: 0 } },
+  } }],
+  default: { corp: 'coding-model' }, connected: ['corp'],
+};
+
+test('projectModels adds limit/usableInputTokens/limitSource sourced from OpenCode when no profile applies', () => {
+  const { items } = projectModels(providerWithLimits);
+  const coding = items.find((item) => item.model === 'corp/coding-model')!;
+  assert.deepEqual(coding.limit, { context: 128000, output: 4096 });
+  assert.equal(coding.usableInputTokens, 123904);
+  assert.equal(coding.limitSource, 'opencode');
+  assert.equal(coding.maxRunning, undefined);
+  assert.equal(coding.serverDefault, undefined);
+  const zero = items.find((item) => item.model === 'corp/zero-model')!;
+  assert.equal(zero.limit, undefined); // context:0, output:0 are both invalid upstream fields
+  assert.equal(zero.usableInputTokens, undefined);
+  assert.equal(zero.limitSource, undefined);
+});
+
+test('projectModels lets a model profile override fields and merges provenance per field', () => {
+  const profiles: Record<string, ModelProfile> = { 'corp/coding-model': { output: 2000, maxRunning: 2 } };
+  const { items } = projectModels(providerWithLimits, undefined, { profiles });
+  const coding = items.find((item) => item.model === 'corp/coding-model')!;
+  assert.deepEqual(coding.limit, { context: 128000, output: 2000 });
+  assert.equal(coding.limitSource, 'mixed');
+  assert.equal(coding.usableInputTokens, 126000); // 128000 - min(2000,32000)
+  assert.equal(coding.maxRunning, 2);
+});
+
+test('projectModels sets serverDefault only for the configured default model', () => {
+  const { items } = projectModels(providerWithLimits, undefined, { defaultModel: 'corp/coding-model' });
+  const coding = items.find((item) => item.model === 'corp/coding-model')!;
+  const zero = items.find((item) => item.model === 'corp/zero-model')!;
+  assert.equal(coding.serverDefault, true);
+  assert.equal(zero.serverDefault, undefined);
 });
 
 test('malformed model shapes drop unusable entries without throwing', () => {
@@ -149,4 +193,12 @@ test('pages arrays and rejects invalid bounds', () => {
   for (const [offset, limit] of [[-1, 1], [0, 0], [0.5, 1], [0, 1.5], [2, 1]]) {
     assert.throws(() => pageItems([1], offset, limit), { name: 'TypeError', message: /^INVALID_ARGUMENT:/ });
   }
+});
+
+test('projectModels leaves limitSource unset for a maxRunning-only profile without limits', () => {
+  const response = { connected: ['corp'], default: {}, all: [{ id: 'corp', models: { m: { limit: { context: 0, output: 0 } } } }] };
+  const [item] = projectModels(response, undefined, { profiles: { 'corp/m': { maxRunning: 2 } } }).items;
+  assert.equal(item!.maxRunning, 2);
+  assert.equal(item!.limitSource, undefined);
+  assert.equal(item!.limit, undefined);
 });

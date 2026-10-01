@@ -140,6 +140,10 @@ export class Registry {
     entry.phase = 'admitting';
   }
 
+  releaseReply(entry: TrackedSession): void {
+    if (entry.phase === 'admitting' && !entry.admission && !entry.current) entry.phase = 'idle';
+  }
+
   reserveEnd(entry: TrackedSession): void {
     // Ending wins the gate immediately, including against a later reply.
     if (entry.phase === 'ending')

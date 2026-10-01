@@ -25,6 +25,8 @@ import type {
   OutputToolCall,
   ReplyInput,
   StartInput,
+  TurnContextInfo,
+  TurnQueueInfo,
   TurnResult,
 } from '../../../src/types.ts';
 import { EngineError } from '../../../src/types.ts';
@@ -102,6 +104,35 @@ export type Script =
   | { mode: 'throw-unexpected' }
   /** U01: exercises ctx.setSessionId, the way engine.start does right after registry.add. */
   | { mode: 'set-session-id'; messages: string[]; intervalMs?: number }
+  /** Context-concurrency design §4.3/§6: a turn still waiting for a run slot — `status:"running"`
+   * plus a `queue` object (TurnQueueInfo), so MCP-level tests can validate the queued shape against
+   * the real outputSchema/text-mirror without a real RunSlots. Defaults describe a global-cap
+   * wait; pass `model`/`modelRunning`/`modelMaxRunning` for the per-model-blocked variant. */
+  | {
+      mode: 'queued';
+      position?: number;
+      running?: number;
+      maxRunning?: number | null;
+      blockedBy?: 'global' | 'model';
+      model?: string;
+      modelRunning?: number;
+      modelMaxRunning?: number;
+      queuedMs?: number;
+    }
+  /** Context-concurrency design §3/§5.3/§6: a completed turn with observed `context` usage at or
+   * above the CONTEXT_HIGH threshold (ratio >= 0.8), plus the matching warning and `tokens.cache`
+   * sums — the other half of the outputSchema validation this unit needs (the 'queued' mode above
+   * covers the queue side). */
+  | {
+      mode: 'context-high';
+      model?: string;
+      used?: number;
+      peakUsed?: number;
+      usableInputTokens?: number;
+      ratio?: number;
+      cacheRead?: number;
+      cacheWrite?: number;
+    }
   /** U15 (r2-r-tests-3): returns a snapshot immediately like 'immediate', but never detaches from
    * ctx.signal, so a test can prove a stale notifications/cancelled for this already-returned call
    * never fires it — not through any diligence of this stub. (Verified: with the current SDK, the
@@ -243,6 +274,63 @@ export function createStubEngine(): StubEngine {
         await new Promise((resolve) => setTimeout(resolve, interval));
       }
       return snapshot(session, { content: 'session-id-set', status: 'completed' });
+    }
+    if (script.mode === 'queued') {
+      const queue: TurnQueueInfo = {
+        position: script.position ?? 3,
+        running: script.running ?? 4,
+        maxRunning: script.maxRunning === undefined ? 4 : script.maxRunning,
+        blockedBy: script.blockedBy ?? (script.model !== undefined ? 'model' : 'global'),
+        model: script.model,
+        modelRunning: script.modelRunning,
+        modelMaxRunning: script.modelMaxRunning,
+        queuedMs: script.queuedMs ?? 1500,
+      };
+      return snapshot(session, {
+        status: 'running',
+        executionState: 'active',
+        resendSafety: 'not_submitted',
+        content: '',
+        queue,
+        hint:
+          'This turn is queued for a run slot and will start automatically; keep observing it ' +
+          'with opencode-status and do not resend it.',
+      });
+    }
+    if (script.mode === 'context-high') {
+      const usableInputTokens = script.usableInputTokens ?? 123904;
+      const used = script.used ?? 104080;
+      const ratio = script.ratio ?? Math.round((used / usableInputTokens) * 1000) / 1000;
+      const model = script.model ?? 'corp/coding-model';
+      const context: TurnContextInfo = {
+        model,
+        used,
+        peakUsed: script.peakUsed ?? used,
+        usableInputTokens,
+        ratio,
+        limitSource: 'opencode',
+        compacted: false,
+      };
+      return snapshot(session, {
+        status: 'completed',
+        content: 'done',
+        context,
+        tokens: {
+          input: used,
+          output: 500,
+          reasoning: 0,
+          cache: { read: script.cacheRead ?? 100, write: script.cacheWrite ?? 50 },
+        },
+        warnings: [
+          {
+            code: 'CONTEXT_HIGH',
+            message: `Last reported context usage is ${Math.round(ratio * 100)}% of ${model}'s budget (${used} of ${usableInputTokens} tokens).`,
+          },
+        ],
+        hint:
+          'Context is nearly full; continue in a new opencode session with a self-contained prompt ' +
+          'and opencode-end this one.',
+      });
     }
     // 'throw-unexpected'
     throw new Error('unexpected stub failure');
@@ -547,6 +635,8 @@ export function createStubEngine(): StubEngine {
               approvalPolicy: 'never',
               turnTimeoutSeconds: 600,
               maxTurnTimeoutSeconds: 3600,
+              // Context-concurrency design §2/§3: advertised even though this stub never enforces it.
+              contextGuard: 'reject',
             },
             limits: {
               maxOutputChars: 20000,
@@ -555,8 +645,26 @@ export function createStubEngine(): StubEngine {
               maxBatchIds: 16,
               outputRetention: { ttlSeconds: 3600, maxTurns: 128, maxBytes: 33554432 },
               requestIds: { maxRecords: 4096, ttlSeconds: 86400 },
+              // Context-concurrency design §3/§4.4: canned run-slot/queue limits (this stub never
+              // actually enforces a cap).
+              maxSessions: 256,
+              maxRunningTurns: 4,
+              maxQueuedTurns: 64,
+              queueTimeoutSeconds: null,
             },
-            capabilities: ['stub'],
+            // Context-concurrency design §4.4: a live snapshot of src/core/run-slots.ts's
+            // RunSlots.snapshot() shape — this stub has no real run-slot bookkeeping, so it always
+            // reports one running turn, nothing queued or held.
+            concurrency: {
+              running: 1,
+              queued: 0,
+              heldUnknown: 0,
+              available: 3,
+              perModel: [],
+              perModelTotal: 0,
+              perModelTruncated: false,
+            },
+            capabilities: ['stub', 'run-queue', 'model-limits', 'context-usage'],
             sandboxEnforcement: 'permission-profile',
           },
         };

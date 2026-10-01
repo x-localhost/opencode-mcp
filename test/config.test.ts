@@ -49,6 +49,11 @@ test('loadConfig: defaults with an empty environment', () => {
   assert.equal(config.readRetryAttempts, 3);
   assert.equal(config.responseLoopLimit, 6);
   assert.equal(config.maxSessions, 256);
+  assert.equal(config.maxRunningTurns, 4);
+  assert.equal(config.maxQueuedTurns, 64);
+  assert.equal(config.queueTimeoutMs, 0);
+  assert.deepEqual(config.modelProfiles, {});
+  assert.equal(config.contextGuard, 'reject');
   assert.equal(config.endAction, 'delete');
   assert.equal(config.onExit, 'abort');
   assert.equal(config.logLevel, 'info');
@@ -497,6 +502,81 @@ test('loadConfig: OPENCODE_MCP_RESPONSE_LOOP_LIMIT defaults to 6, accepts 3..20,
   assert.equal(loadConfig(env({ OPENCODE_MCP_RESPONSE_LOOP_LIMIT: '3' }), FIXED_CWD).responseLoopLimit, 3);
   assert.equal(loadConfig(env({ OPENCODE_MCP_RESPONSE_LOOP_LIMIT: '20' }), FIXED_CWD).responseLoopLimit, 20);
   assert.equal(loadConfig(env({ OPENCODE_MCP_RESPONSE_LOOP_LIMIT: '0' }), FIXED_CWD).responseLoopLimit, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Context concurrency configuration
+// ---------------------------------------------------------------------------
+
+test('loadConfig: run-slot settings accept their boundaries and disabled timeout', () => {
+  const config = loadConfig(env({
+    OPENCODE_MCP_MAX_RUNNING_TURNS: '0', OPENCODE_MCP_MAX_QUEUED_TURNS: '1024',
+    OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS: '2147483', OPENCODE_MCP_CONTEXT_GUARD: 'off',
+  }), FIXED_CWD);
+  assert.equal(config.maxRunningTurns, 0);
+  assert.equal(config.maxQueuedTurns, 1024);
+  assert.equal(config.queueTimeoutMs, 2_147_483_000);
+  assert.equal(loadConfig(env({ OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS: '0' }), FIXED_CWD).queueTimeoutMs, 0);
+  assert.equal(config.contextGuard, 'off');
+  assert.equal(loadConfig(env({ OPENCODE_MCP_MAX_RUNNING_TURNS: '256', OPENCODE_MCP_MAX_QUEUED_TURNS: '0' }), FIXED_CWD).maxRunningTurns, 256);
+  assert.equal(loadConfig(env({ OPENCODE_MCP_MAX_QUEUED_TURNS: '0' }), FIXED_CWD).maxQueuedTurns, 0);
+});
+
+for (const [name, values] of [
+  ['OPENCODE_MCP_MAX_RUNNING_TURNS', ['-1', '257', '1.5', 'bad']],
+  ['OPENCODE_MCP_MAX_QUEUED_TURNS', ['-1', '1025', '1.5', 'bad']],
+  ['OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS', ['-1', '2147484', '1.5', 'bad']],
+  ['OPENCODE_MCP_CONTEXT_GUARD', ['warn', 'true']],
+] as const) {
+  for (const value of values) {
+    test(`loadConfig: ${name} rejects ${value}`, () => {
+      assert.throws(() => loadConfig(env({ [name]: value }), FIXED_CWD), new RegExp(name));
+    });
+  }
+}
+
+test('loadConfig: model profiles accept limits and maxRunning-only profiles', () => {
+  const profiles = { 'acme/large': { context: 200000, input: 150000, output: 32000 }, 'acme/fast': { maxRunning: 2 } };
+  assert.deepEqual(loadConfig(env({ OPENCODE_MCP_MODEL_PROFILES: JSON.stringify(profiles) }), FIXED_CWD).modelProfiles, profiles);
+});
+
+test('loadConfig: model profile token fields accept their lower and upper bounds', () => {
+  const config = loadConfig(env({
+    OPENCODE_MCP_MODEL_PROFILES: '{"acme/model":{"context":100000000,"input":1,"output":1}}',
+  }), FIXED_CWD);
+  assert.deepEqual(config.modelProfiles['acme/model'], { context: 100000000, input: 1, output: 1 });
+});
+
+for (const profiles of [
+  '{', '[]', 'null', '"string"', '5', '{"acme/model":{"extra":1}}',
+  '{"/model":{"maxRunning":1}}', '{"acme/":{"maxRunning":1}}',
+  '{"acmemodel":{"maxRunning":1}}', '{"acme/model":[]}',
+  '{"acme/mo\\u0001del":{"maxRunning":1}}',
+  JSON.stringify({ [`acme/${'m'.repeat(201)}`]: { maxRunning: 1 } }),
+  '{"acme/model":{"context":0,"output":1}}',
+  '{"acme/model":{"context":100000001,"output":1}}',
+  '{"acme/model":{"context":1.5,"output":1}}',
+  '{"acme/model":{"context":100,"input":101,"output":1}}',
+  '{"acme/model":{"context":100}}',
+  '{"acme/model":{"output":100}}',
+  '{"acme/model":{"maxRunning":5}}',
+]) {
+  test('loadConfig: OPENCODE_MCP_MODEL_PROFILES rejects invalid profile data', () => {
+    assert.throws(() => loadConfig(env({ OPENCODE_MCP_MODEL_PROFILES: profiles }), FIXED_CWD), /OPENCODE_MCP_MODEL_PROFILES/);
+  });
+}
+
+test('loadConfig: profile maxRunning can reach 256 when global cap is unlimited', () => {
+  const config = loadConfig(env({
+    OPENCODE_MCP_MAX_RUNNING_TURNS: '0',
+    OPENCODE_MCP_MODEL_PROFILES: '{"acme/model":{"maxRunning":256}}',
+  }), FIXED_CWD);
+  assert.equal(config.modelProfiles['acme/model']?.maxRunning, 256);
+});
+
+test('loadConfig: model profiles reject more than 256 keys', () => {
+  const entries = Object.fromEntries(Array.from({ length: 257 }, (_, i) => [`p/m${i}`, { maxRunning: 1 }]));
+  assert.throws(() => loadConfig(env({ OPENCODE_MCP_MODEL_PROFILES: JSON.stringify(entries) }), FIXED_CWD), /OPENCODE_MCP_MODEL_PROFILES/);
 });
 
 for (const bad of ['1', '2', '21', '-1', '1.5', 'abc']) {

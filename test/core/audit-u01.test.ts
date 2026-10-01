@@ -146,6 +146,7 @@ test('U01(d): engine.start calls ctx.setSessionId with the created session id be
   });
   connection.api.warmInstance = async () => {
     await gate;
+    return { providerCatalog: {} };
   };
   replyOnPrompt(connection);
   const seen: string[] = [];

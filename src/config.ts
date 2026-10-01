@@ -8,8 +8,10 @@ import * as fs from 'node:fs';
 import type {
   ApprovalPolicy,
   Config,
+  ContextGuard,
   EndAction,
   LogLevel,
+  ModelProfile,
   OnExit,
   Sandbox,
   ServerMode,
@@ -21,6 +23,7 @@ const APPROVAL_POLICIES: readonly ApprovalPolicy[] = ['never', 'on-request'];
 const END_ACTIONS: readonly EndAction[] = ['delete', 'archive'];
 const ON_EXITS: readonly OnExit[] = ['abort', 'end'];
 const LOG_LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error'];
+const CONTEXT_GUARDS: readonly ContextGuard[] = ['reject', 'off'];
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes']);
 const FALSE_VALUES = new Set(['0', 'false', 'no']);
@@ -105,6 +108,65 @@ function parseSecondsToMs(env: NodeJS.ProcessEnv, name: string, fallbackSeconds:
     throw configError(name, 'must not exceed 2147483 seconds');
   }
   return milliseconds;
+}
+
+/** A bounded seconds value where 0 disables the timeout. */
+function parseOptionalSecondsToMs(env: NodeJS.ProcessEnv, name: string, fallbackSeconds: number): number {
+  const v = raw(env, name);
+  if (v === undefined) return fallbackSeconds * 1000;
+  if (v.trim() === '0') return 0;
+  return parseSecondsToMs({ ...env, [name]: v }, name, fallbackSeconds);
+}
+
+function parseModelProfiles(env: NodeJS.ProcessEnv, name: string, maxRunningTurns: number): Record<string, ModelProfile> {
+  const value = raw(env, name);
+  if (value === undefined) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw configError(name, 'must be valid JSON');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw configError(name, 'must be a JSON object');
+  }
+  const entries = Object.entries(parsed as Record<string, unknown>);
+  if (entries.length > 256) throw configError(name, 'must contain at most 256 model profiles');
+  const result: Record<string, ModelProfile> = {};
+  const validId = (part: string): boolean => part.length >= 1 && part.length <= 200 && !/[\x00-\x1f\x7f-\x9f]/u.test(part);
+  for (const [model, profile] of entries) {
+    const separator = model.indexOf('/');
+    const provider = model.slice(0, separator);
+    const modelId = model.slice(separator + 1);
+    if (separator <= 0 || !validId(provider) || !validId(modelId)) {
+      throw configError(name, `model key "${model}" must use provider/model with valid 1..200 character parts`);
+    }
+    if (typeof profile !== 'object' || profile === null || Array.isArray(profile)) {
+      throw configError(name, `profile for "${model}" must be an object`);
+    }
+    const fields = Object.entries(profile as Record<string, unknown>);
+    for (const [field, fieldValue] of fields) {
+      if (!['context', 'input', 'output', 'maxRunning'].includes(field)) {
+        throw configError(name, `profile for "${model}" has unknown field "${field}"`);
+      }
+      const max = field === 'maxRunning' ? 256 : 100_000_000;
+      if (typeof fieldValue !== 'number' || !Number.isInteger(fieldValue) || fieldValue < 1 || fieldValue > max) {
+        throw configError(name, `profile field "${field}" for "${model}" must be an integer between 1 and ${max}`);
+      }
+      if (field === 'maxRunning' && maxRunningTurns > 0 && fieldValue > maxRunningTurns) {
+        throw configError(name, `profile maxRunning for "${model}" must not exceed OPENCODE_MCP_MAX_RUNNING_TURNS`);
+      }
+    }
+    const fieldsByName = profile as Record<string, number>;
+    if ((fieldsByName.context === undefined) !== (fieldsByName.output === undefined)) {
+      throw configError(name, `profile for "${model}" must specify context and output together`);
+    }
+    if (fieldsByName.input !== undefined && fieldsByName.context !== undefined && fieldsByName.input > fieldsByName.context) {
+      throw configError(name, `profile input for "${model}" must not exceed context`);
+    }
+    result[model] = { ...fieldsByName };
+  }
+  return result;
 }
 
 function parseCommaList(env: NodeJS.ProcessEnv, name: string): string[] {
@@ -289,6 +351,12 @@ export function loadConfig(env: NodeJS.ProcessEnv, cwd: string): Config {
   const maxSessions = parsePositiveInt(env, 'OPENCODE_MCP_MAX_SESSIONS', 256);
   if (maxSessions > 10000) throw configError('OPENCODE_MCP_MAX_SESSIONS', 'must not exceed 10000');
 
+  const maxRunningTurns = parseIntInRange(env, 'OPENCODE_MCP_MAX_RUNNING_TURNS', 4, 0, 256);
+  const maxQueuedTurns = parseIntInRange(env, 'OPENCODE_MCP_MAX_QUEUED_TURNS', 64, 0, 1024);
+  const queueTimeoutMs = parseOptionalSecondsToMs(env, 'OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS', 0);
+  const modelProfiles = parseModelProfiles(env, 'OPENCODE_MCP_MODEL_PROFILES', maxRunningTurns);
+  const contextGuard = parseEnum(env, 'OPENCODE_MCP_CONTEXT_GUARD', CONTEXT_GUARDS, 'reject');
+
   const endAction = parseEnum(env, 'OPENCODE_MCP_END_ACTION', END_ACTIONS, 'delete');
   const onExit = parseEnum(env, 'OPENCODE_MCP_ON_EXIT', ON_EXITS, 'abort');
   const logLevel = parseEnum(env, 'OPENCODE_MCP_LOG_LEVEL', LOG_LEVELS, 'info');
@@ -323,6 +391,11 @@ export function loadConfig(env: NodeJS.ProcessEnv, cwd: string): Config {
     readRetryAttempts,
     responseLoopLimit,
     maxSessions,
+    maxRunningTurns,
+    maxQueuedTurns,
+    queueTimeoutMs,
+    modelProfiles,
+    contextGuard,
     endAction,
     onExit,
     logLevel,

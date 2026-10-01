@@ -1,4 +1,4 @@
-# opencode-mcp — design (v0.3; release 0.3.0)
+# opencode-mcp — design (v0.4; release 0.4.0)
 
 Status: reviewed · Date: 2026-09-29
 
@@ -238,8 +238,15 @@ The bridge adds only deny rules and never submits prompt `tools` or permission `
 | `OPENCODE_MCP_APPROVAL_TIMEOUT_SECONDS` | `600` |
 | `OPENCODE_MCP_STARTUP_TIMEOUT_SECONDS` / `_REQUEST_TIMEOUT_SECONDS` / `_CLEANUP_TIMEOUT_SECONDS` | `60` / `30` / `15`; Node fetch/undici headers and body waits cap HTTP at 300 s |
 | `OPENCODE_MCP_HEARTBEAT_SECONDS` / `_STATUS_POLL_SECONDS` / `_SSE_STALL_SECONDS` | `15` / `30` / `35`; `_HEARTBEAT_SECONDS` is additionally rejected above `600` (Claude Code's 30-min stdio idle abort makes a larger value pointless and undetectable) |
+| `OPENCODE_MCP_READ_RETRY_ATTEMPTS` | `3` (integer 1–3, counts the initial attempt; overload design §C bounded admission GET retries only) |
+| `OPENCODE_MCP_RESPONSE_LOOP_LIMIT` | `6` (integer 3–20, or `0` to disable; response-loop watchdog, §12) |
 | `OPENCODE_MCP_MAX_OUTPUT_CHARS` | `20000` |
 | `OPENCODE_MCP_MAX_SESSIONS` | `256` (positive integer ≤ 10000; a new `opencode` start beyond it is rejected `SESSION_CAPACITY` before any upstream mutation, never evicting a tracked session) |
+| `OPENCODE_MCP_MAX_RUNNING_TURNS` | `4` (integer 0–256; `0` = unlimited run-slot cap, §13) |
+| `OPENCODE_MCP_MAX_QUEUED_TURNS` | `64` (integer 0–1024; `0` = no queue) |
+| `OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS` | `0` (disabled; or 1–2147483 seconds a queued turn may wait for a run slot) |
+| `OPENCODE_MCP_MODEL_PROFILES` | `{}` (JSON object, `provider/model` → `{context?,input?,output?,maxRunning?}`; §13) |
+| `OPENCODE_MCP_CONTEXT_GUARD` | `reject` (`reject` or `off`; prompt-size guard, §13) |
 | `OPENCODE_MCP_END_ACTION` | `delete` |
 | `OPENCODE_MCP_ON_EXIT` | `abort` (`end` also ends sessions) |
 | `OPENCODE_MCP_LOG_LEVEL` | `info` |
@@ -288,3 +295,98 @@ Worktree management, revert, fork, todos, attachments, summarize and cumulative 
 - 실측 근거: `docs/research/probe-overload/` (OpenCode 1.18.33 + 가짜 LLM; 요약표는 13개 형태를 모두 다루지만, 메시지·이벤트 샘플은 그중 일부(1b/3/4/5/7/8/9/11)만 보존됨).
 - 불변식: prompt 자동 재전송 없음; 모호한 mutation(5xx·timeout·손실된 응답)은 재시도하지 않고 표식 유지; degraded 읽기는 turn을 실패시키지 않음; `error.retryable`은 재전송 허가가 아님(`resendSafety` 확인).
 - 검증: 단위 테스트 `test/core/overload-3a.test.ts`, `overload-3b.test.ts`, `response-loop.test.ts`, `test/opencode/http-retry.test.ts`; 실제 OpenCode e2e `e2e/overload.test.mjs`(13 시나리오).
+
+## 13. Context-aware assignment and run-slot cap (release 0.4.0)
+
+Two additive features: per-model context-size reporting and a prompt-size guard (model assignment), and a
+per-process run-slot cap with a FIFO queue (concurrency cap). Both default to conservative, opt-out behaviour
+and degrade to today's behaviour when OpenCode reports no limit and the operator sets no profile or cap
+override. README's "모델별 컨텍스트에 맞춘 작업 배분" and "병렬 실행과 최대 실행 개수" sections are the
+caller-facing summary of this contract.
+
+### 13.1 Decisions
+
+- Queued turns are reported as `status:"running"` plus a `queue` object, not a new terminal-looking status, so
+  existing pollers and the batch `ready()`/list logic keep working unmodified; `resendSafety` stays
+  `"not_submitted"` and callers are told never to resend a queued turn.
+- Default `OPENCODE_MCP_MAX_RUNNING_TURNS=4` (`0` = unlimited); default `OPENCODE_MCP_MAX_QUEUED_TURNS=64`;
+  default `OPENCODE_MCP_QUEUE_TIMEOUT_SECONDS=0` (disabled) — queued turns hold nothing upstream, so there is
+  no inherent reason to time them out; running turns are already bounded by the turn timeout, and approvals by
+  the approval timeout.
+- A turn whose execution outcome is unknown (`executionState:"unknown"`) keeps its run slot (held, not
+  released) until recovery proves quiescence, a managed-process exit fences the generation, or the session
+  ends or is removed; exposed as `concurrency.heldUnknown` so operators can see slots that are not actually
+  free.
+- The run-slot queue grants the oldest eligible ticket first; a ticket blocked only by its own model's cap is
+  skipped rather than blocking everyone behind it (no idle global capacity sits behind one saturated model),
+  while tickets of the same model stay strictly FIFO.
+- A turn with no `model` and no `OPENCODE_MCP_DEFAULT_MODEL` configured is counted only against the global
+  cap — the per-model cap and the prompt guard both need a known target model before submission. If any
+  `OPENCODE_MCP_MODEL_PROFILES` entry sets `maxRunning` while no default model is configured, startup logs a
+  warning once.
+- `OPENCODE_MCP_CONTEXT_GUARD` defaults to `reject` (no `warn` mode): a prompt whose heuristic estimate
+  exceeds the model's usable input budget is rejected before any OpenCode mutation, because OpenCode's own
+  compaction cannot shrink the prompt that produced the overflow. The guard never counts session history —
+  OpenCode compacts proactively when it knows a limit, and reactively on gateway overflow even when it
+  reports `limit.context === 0`.
+- The guard runs synchronously before any reservation or mutation whenever the model's limit is already known
+  (an operator profile, or a cached projection of a prior `/provider` read for the current generation and
+  resolved directory); otherwise it falls back to an in-turn check after warm-up, immediately before the
+  prompt POST, so a doomed prompt is never queued and no session is left orphaned in the common case.
+- `TurnResult.model` keeps its existing meaning (the requested model); the model OpenCode actually used is
+  reported separately as `context.model`, so no caller-visible field silently changes meaning.
+
+### 13.2 Accounting
+
+Mirrors OpenCode 1.18.33 exactly (`packages/opencode/src/session/overflow.ts` and
+`packages/opencode/src/provider/transform.ts`; file:line references as cited by the internal source+runtime
+probe of that tag):
+
+- Usable input budget (`overflow.ts:10-20`, with `compaction.reserved` treated as unset):
+  `maxOut = min(limit.output ?? 0, 32000) || 32000`; if `limit.input > 0`:
+  `usable = max(0, limit.input - min(20000, maxOut))`; else if `limit.context > 0`:
+  `usable = max(0, limit.context - maxOut)`; else usable is unknown. A result of `0` is also reported as
+  unknown (nothing fits, but `0` would otherwise read as "no data" everywhere else in this contract).
+- Context/overflow count (`overflow.ts:22-34`): `tokens.total` when it is a positive finite number, else
+  `tokens.input + tokens.output + tokens.cache.read + tokens.cache.write`; missing or non-finite data is
+  reported as unknown, never as `0`.
+- A custom provider model with no `limit` block in OpenCode's config reports `limit:{context:0,output:0}`
+  (`provider/provider.ts:1609-1613`). At `context===0`, OpenCode's own proactive compaction never triggers
+  (`overflow.ts:12,29`), but reactive compaction on a gateway-reported context overflow still works
+  (`session/processor.ts:621-631`). The request still asks the gateway for `max_tokens:32000`
+  (`transform.ts:1481-1483`; an output limit of `0` counts as the `32000` ceiling).
+- The prompt-size guard's estimate is deliberately rough and ASCII-biased: `ceil(asciiChars/4) +
+  ceil(nonAsciiCodePoints/2)`, with no fixed overhead term and no session-history term.
+- `opencode-info section:"models"` merges an operator `OPENCODE_MCP_MODEL_PROFILES` entry over the
+  OpenCode-reported limit field by field (the profile wins per field); `limitSource` is `"profile"` only when
+  every present limit field came from the profile, `"opencode"` when none did, else `"mixed"`. A profile that
+  only sets `maxRunning` does not change `limitSource`.
+- Per-turn `context.used` is taken from the last non-summary assistant message with usage in the turn's
+  execution interval; `context.peakUsed` is the maximum of the same count over all of that turn's non-summary
+  assistants, so a mid-turn compaction does not hide how large the task actually got. `ratio =
+  round3(used / usableInputTokens)`; `CONTEXT_HIGH` is warned at an unrounded ratio ≥ 0.8.
+- `/provider` catalog reads are capped at 32 MiB (was 2 MiB, §5.1/U0): OpenCode's bundled models.dev snapshot
+  alone is about 6.15 MiB once `enabled_providers` does not restrict it, and the previous 2 MiB cap failed
+  every turn and `opencode-info models` call on such a deployment.
+
+### 13.3 Invariants
+
+Every turn still describes one identified turn and its observed execution state; `queue`, `queuedMs` and
+`context` are additive reporting and never themselves establish completion or admission. Queue waiting never
+holds the per-session admission gate and is not counted against `timeout-seconds` (the turn timer arms after
+submission); `wait-seconds` bounds queue wait together with the rest of admission, so `wait-seconds:0` returns
+immediately even for a queued turn. `RUN_QUEUE_CAPACITY` and a pre-submission `PROMPT_TOO_LARGE` are
+`EngineError`s raised before any reservation is kept — nothing is submitted, and a `start` creates no session
+(a `reply`'s existing session is left untouched). An in-turn `PROMPT_TOO_LARGE` (the fallback path, used when
+the limit became known only after warm-up) and `QUEUE_TIMEOUT` are turn-level `error.name`s on an otherwise
+idle, still-usable session, never routed through `admissionFailure`. Shutdown closes the run-slot queue
+synchronously first (queued tickets settle `cancelled`, their turns finish `cancelled`/not_submitted) before
+the existing bounded stop of running turns.
+
+### 13.4 Deferred
+
+No automatic server-side model choice (Claude Code always chooses and passes `model` explicitly when sizing
+matters); the prompt-size guard's token estimate is a heuristic, not a real tokenizer for any provider; the
+run-slot cap and queue are per MCP process with no cross-process or cross-host coordination (an attach-mode
+deployment where several opencode-mcp processes share one OpenCode server gets one independent cap per
+process, not one shared cap).

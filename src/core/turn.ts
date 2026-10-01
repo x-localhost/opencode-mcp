@@ -13,7 +13,7 @@ import type {
   PromptBody,
   TurnResult,
 } from '../types.ts';
-import { classifyOutcome, extractInterval, interpretFinish, observedActivity, providerError, submissionEvidence, summarizeInterval, MALFORMED_STREAM_MESSAGE } from './result.ts';
+import { buildContextResult, classifyOutcome, contextOverflowHint, extractInterval, interpretFinish, observedActivity, providerError, submissionEvidence, summarizeInterval, MALFORMED_STREAM_MESSAGE } from './result.ts';
 import { detectResponseLoop } from './response-loop.ts';
 import type { EventHub } from './hub.ts';
 import type { MutationKind, TrackedSession } from './registry.ts';
@@ -24,6 +24,9 @@ import { withReadRetry, isRetryableReadError, MAX_AUTOMATIC_WAIT_MS, toUpstreamE
 import type { OpencodeApiRetryable } from '../opencode/http.ts';
 import type { ConnectionHealth } from './connection-health.ts';
 import { safeSlice } from './text.ts';
+import type { RunTicket } from './run-slots.ts';
+import { estimatePromptTokens, promptTooLargeMessage } from './model-limits.ts';
+import type { ResolvedModelLimit } from './model-limits.ts';
 
 type StopReason = 'cancelled' | 'timeout' | 'response_loop';
 type Attached = { ctx: CallContext; heartbeat?: () => void };
@@ -46,7 +49,7 @@ const ABORT_RETRY_MS = 1000;
 
 /** Run one admitted prompt until terminal evidence or a confirmed stop. */
 export class Turn {
-  phase: 'admitting' | 'submitting' | 'running' | 'stopping' | 'terminal' = 'admitting';
+  phase: 'queued' | 'admitting' | 'submitting' | 'running' | 'stopping' | 'terminal' = 'admitting';
   private readyResolve: () => void = () => {};
   readonly ready: Promise<void>;
   private doneResolve: (result: TurnResult) => void = () => {};
@@ -169,6 +172,11 @@ export class Turn {
   // U06 (critic-c-parallel-subagent-load-5): trailing debounce for message.updated-triggered
   // reconciles.
   private reconcileDebounceCancel?: () => void;
+  private ticket?: RunTicket;
+  private queueTimeoutMs: number | null;
+  private onHeld?: (ticket: RunTicket) => void;
+  private onLateConfirmedRejection?: (result: TurnResult) => void;
+  private limitsForModel?: (model: string) => ResolvedModelLimit | undefined;
   constructor(
     entry: TrackedSession,
     number: number,
@@ -185,6 +193,11 @@ export class Turn {
     onCommit: (result: TurnResult) => void | Promise<void>,
     outputSchema?: OutputSchema,
     admissionDeadlineAt?: number,
+    ticket?: RunTicket,
+    queueTimeoutMs: number | null = null,
+    onHeld?: (ticket: RunTicket) => void,
+    onLateConfirmedRejection?: (result: TurnResult) => void,
+    limitsForModel?: (model: string) => ResolvedModelLimit | undefined,
   ) {
     this.entry = entry;
     this.number = number;
@@ -200,6 +213,12 @@ export class Turn {
     this.trackMutation = trackMutation;
     this.onCommit = onCommit;
     this.outputSchema = outputSchema;
+    this.ticket = ticket;
+    this.queueTimeoutMs = queueTimeoutMs;
+    this.onHeld = onHeld;
+    this.onLateConfirmedRejection = onLateConfirmedRejection;
+    this.limitsForModel = limitsForModel;
+    if (ticket?.state === 'queued') this.phase = 'queued';
     this.startAt = clock.monotonicNow();
     this.admissionDeadlineAt = admissionDeadlineAt ??
       this.startAt + (config.startupTimeoutMs || config.sseStallMs * 2);
@@ -243,6 +262,21 @@ export class Turn {
     return `${this.entry.id}#${this.number}`;
   }
 
+  private queuedMs(): number | undefined {
+    const ticket = this.ticket;
+    return ticket?.everQueued
+      ? Math.max(0, (ticket.grantedAtMono ?? this.clock.monotonicNow()) - ticket.queuedAtMono)
+      : undefined;
+  }
+
+  private queueProgress(): string | undefined {
+    const info = this.ticket?.queueInfo();
+    if (!info) return undefined;
+    return info.blockedBy === 'model' && info.model && info.modelMaxRunning !== undefined
+      ? `Queued for an OpenCode run slot for ${info.model} (position ${info.position}; model ${info.modelRunning}/${info.modelMaxRunning} running).`.slice(0, PROGRESS_MAX_CHARS)
+      : `Queued for an OpenCode run slot (position ${info.position}; ${info.running}/${info.maxRunning ?? 'unlimited'} running).`;
+  }
+
   start(body: PromptBody, timeoutMs: number): void {
     void this.execute(body, timeoutMs);
   }
@@ -251,8 +285,53 @@ export class Turn {
     const api = this.lease.api,
       id = this.entry.id,
       directory = this.entry.directory;
-    const admissionDeadline = this.admissionDeadlineAt;
+    let admissionDeadline = this.admissionDeadlineAt;
     try {
+      const ticket = this.ticket;
+      if (ticket?.everQueued) {
+        if (ticket.state === 'queued') this.phase = 'queued';
+        const deadline = this.queueTimeoutMs === null ? undefined : ticket.queuedAtMono + this.queueTimeoutMs;
+        let cancelQueueTimer = () => {};
+        try {
+          await Promise.race([
+            ticket.settled,
+            this.done.then(() => 'terminal' as const),
+            ...(deadline === undefined ? [] : [new Promise<'cancelled'>((resolve) => {
+              cancelQueueTimer = this.clock.schedule(Math.max(0, deadline - this.clock.monotonicNow()),
+                () => resolve('cancelled'));
+            })]),
+          ]);
+        } finally { cancelQueueTimer(); }
+        if (this.doneValue || this.stopReason) return;
+        // Grant time, not construction time, decides expiry. A delayed timer still wins if
+        // the ticket had not been granted strictly before its monotonic deadline.
+        const grantedInTime = ticket.state === 'granted' && ticket.grantedAtMono !== undefined &&
+          (deadline === undefined || ticket.grantedAtMono < deadline);
+        if (deadline !== undefined && !grantedInTime && this.clock.monotonicNow() >= deadline) {
+          ticket.release();
+          this.error = { name: 'QUEUE_TIMEOUT',
+            message: `Waited ${this.queueTimeoutMs! / 1000}s for a run slot; nothing was submitted.`, retryable: true };
+          this.executionState = 'stopped';
+          this.finish('failed');
+          return;
+        }
+        if (!grantedInTime) {
+          this.executionState = 'stopped';
+          this.finish('cancelled');
+          return;
+        }
+        if (this.connection.current()?.generation !== this.lease.generation) {
+          this.error = { name: 'OPENCODE_UNAVAILABLE', message: 'OpenCode server changed while the turn was queued' };
+          this.executionState = 'stopped';
+          this.finish('failed');
+          return;
+        }
+        admissionDeadline = this.clock.monotonicNow() +
+          (this.config.startupTimeoutMs || this.config.sseStallMs * 2);
+        this.admissionDeadlineAt = admissionDeadline;
+      }
+      if (this.doneValue || this.stopReason) return;
+      this.phase = 'admitting';
       const subscription = this.hub.listen(directory, this.lease, (event) => this.onEvent(event));
       this.hubClose = subscription.close;
       let cancelConnect = () => {};
@@ -305,7 +384,7 @@ export class Turn {
       // A recovery may have been reserved while warm-up was in flight. Re-warm
       // after it releases, with a final synchronous check before dispatch.
       while (this.recovery()) {
-        await this.recovery();
+        await this.withinDeadline(this.recovery()!, admissionDeadline);
         if (this.stopReason || this.doneValue) return;
         this.warming = this.warm(admissionDeadline);
         try {
@@ -315,6 +394,9 @@ export class Turn {
         }
         if (this.stopReason || this.doneValue) return;
       }
+      // Context guard: in-turn fallback after warm-up/recovery and before promptAsync.
+      if (this.stopReason || this.doneValue) return;
+      if (this.checkPromptGuard(body)) return;
       this.phase = 'submitting';
       if (this.entry.phase !== 'ending') this.entry.phase = 'running';
       // This synchronous flag is the ownership boundary for an ambiguous POST.
@@ -328,6 +410,22 @@ export class Turn {
         // before forwarding. No automatic prompt resend follows any other failure either.
         if (error instanceof OpencodeHttpError && error.status >= 400 && error.status < 500) {
           this.submissionRejected = true;
+          // Re-read after the await: TS keeps the pre-await narrowing of doneValue to undefined.
+          const published = this.doneValue as TurnResult | undefined;
+          if (published?.executionState === 'unknown') {
+            // The original POST was rejected before execution. Repair the already-published
+            // outcome, including keyed replays, without clearing unrelated mutation barriers.
+            const result = published;
+            this.executionState = 'stopped';
+            this.cleanup = this.entry.unresolvedMutations?.size ? 'unconfirmed' : 'complete';
+            result.executionState = 'stopped';
+            result.cleanup = this.cleanup;
+            result.resendSafety = 'not_submitted';
+            result.hint = this.cleanup === 'complete'
+              ? 'The prompt was rejected before execution. Use opencode-reply to retry or opencode-end to finish.'
+              : 'The prompt was rejected before execution, but earlier cleanup remains unconfirmed. Use opencode-status or opencode-cancel before continuing.';
+            this.onLateConfirmedRejection?.(result);
+          }
           if (this.stopReason || this.doneValue) return;
           this.error = { ...toUpstreamErrorDetail(error),
             name: error.status === 429 ? 'OPENCODE_OVERLOADED' : 'UPSTREAM_ERROR',
@@ -929,7 +1027,7 @@ export class Turn {
   }
 
   async reconcile(): Promise<void> {
-    if (this.doneValue || this.stopReason || this.phase === 'admitting' || this.phase === 'submitting') return;
+    if (this.doneValue || this.stopReason || this.phase === 'queued' || this.phase === 'admitting' || this.phase === 'submitting') return;
     if (this.clock.monotonicNow() < this.nextReadAt) return;
     if (this.reconciling) {
       this.reconcileAgain = true;
@@ -1359,6 +1457,29 @@ export class Turn {
     this.pendingSince.clear();
   }
 
+  /**
+   * U4b in-turn fallback (context-concurrency design §5.4): the engine's synchronous pre-check
+   * skips when no cached/profile limit is known yet; by the time this turn's own warm-up has
+   * populated the engine's limits cache, this runs once more, right before the prompt POST, over
+   * exactly the text `body` would send (prompt plus system/instructions). On exceed, finishes the
+   * turn `failed`/`PROMPT_TOO_LARGE` directly (never through `admissionFailure`) and returns true
+   * so the caller skips dispatch.
+   */
+  private checkPromptGuard(body: PromptBody): boolean {
+    if ((this.config.contextGuard ?? 'reject') === 'off') return false;
+    const modelName = this.entry.model;
+    if (!modelName) return false;
+    const usable = this.limitsForModel?.(modelName)?.usableInputTokens;
+    if (usable === undefined) return false;
+    const text = body.parts.map((part) => part.text).join('') + (body.system ?? '');
+    const estimated = estimatePromptTokens(text);
+    if (estimated <= usable) return false;
+    this.error = { name: 'PROMPT_TOO_LARGE', message: promptTooLargeMessage(modelName, estimated, usable), retryable: false };
+    this.executionState = 'stopped';
+    this.finish('failed');
+    return true;
+  }
+
   stop(reason: StopReason): Promise<TurnResult> {
     if (this.doneValue) return this.done;
     if (this.stopPromise) return this.stopPromise;
@@ -1550,6 +1671,7 @@ export class Turn {
         toolCallCount: 0,
         tokens: undefined,
         cost: undefined,
+        contextUsage: undefined,
       };
     }
   }
@@ -1600,6 +1722,7 @@ export class Turn {
       lastAssistant.info.finish === undefined &&
       !lastAssistant.info.error;
     const unsolicitedAbort =
+      this.submissionDispatched &&
       this.stopReason === undefined &&
       (status === 'cancelled' ||
         (status === 'failed' && this.error?.name === 'TURN_INCOMPLETE' && abortShape));
@@ -1615,6 +1738,39 @@ export class Turn {
     try {
       const summary = this.buildSummary({ status, error: this.error });
       summary.toolCallCount = Math.max(summary.toolCallCount, this.maxToolCallCount);
+      const { contextUsage, ...summaryRest } = summary;
+      const resolvedLimit = contextUsage ? this.limitsForModel?.(contextUsage.model) : undefined;
+      const overflowModel = contextUsage?.model ?? this.entry.model ?? 'the model';
+      const baseWarnings = this.stopReason !== 'response_loop' ? classified.warnings : undefined;
+      const baseHint =
+        this.stopReason === 'response_loop'
+          ? this.executionState === 'stopped' && this.cleanup === 'complete'
+            ? 'OpenCode was stopped after repeated unusable model responses. Check the model/gateway and inspect partial effects before trying again.'
+            : 'Stop could not be confirmed; OpenCode may still be issuing requests. Do not resend. Use opencode-status or opencode-cancel to inspect the session.'
+          : this.error?.name === 'SUBMISSION_UNCONFIRMED'
+          ? 'Submission is unconfirmed. Do not resend. Use opencode-status to observe the existing session.'
+          : this.error?.name === 'ContextOverflowError'
+          ? contextOverflowHint(overflowModel)
+          : this.error?.name === 'UnknownError' && this.error.message === MALFORMED_STREAM_MESSAGE
+          ? 'OpenCode could not parse a response. Check the model/gateway response format; inspect partial effects before retrying.'
+          : this.executionState === 'unknown'
+          ? 'Use opencode-cancel to confirm stop before continuing.'
+          : this.error?.name === 'EMPTY_RESPONSE'
+            ? 'OpenCode finished without answer text. No tool or patch activity was observed. Inspect the result, then retry once after a short wait if appropriate.'
+          : classified.warnings?.some((warning) => warning.code === 'EMPTY_RESPONSE')
+            ? 'Tool activity occurred, but the final answer is empty. Inspect opencode-output and the turn diff before continuing.'
+          : classified.warnings?.some((warning) => warning.code === 'TRUNCATED')
+            ? 'The provider truncated the answer. Use opencode-reply to continue from the stopping point.'
+          : unsolicitedAbort
+            ? 'OpenCode aborted this turn without a request from this call (possibly a delayed ' +
+              'abort from an earlier timed-out cancel, or another client). Inspect partial ' +
+              'effects with opencode-output or the turn diff before retrying.'
+            : status === 'running' || status === 'waiting_for_approval'
+              ? 'Use opencode-status to observe this turn.'
+              : 'Use opencode-reply to continue or opencode-end to finish.';
+      const { context, warnings: finalWarnings, hint } = buildContextResult(
+        contextUsage, this.outputArtifacts.compacted, resolvedLimit, baseWarnings, baseHint,
+      );
       result = {
         kind: 'turn',
         threadId: this.entry.id,
@@ -1624,12 +1780,14 @@ export class Turn {
         status,
         executionState: this.executionState,
         cleanup: this.cleanup,
-        ...summary,
-        output: { state: 'pending', toolCallCount: Math.max(summary.toolCallCount, this.maxToolCallCount),
+        ...summaryRest,
+        output: { state: 'pending', toolCallCount: Math.max(summaryRest.toolCallCount, this.maxToolCallCount),
           partial: status !== 'completed' || this.executionState !== 'stopped' || !!finishFacts?.partial },
         directory: this.entry.directory,
         ...(this.entry.agent ? { agent: this.entry.agent } : {}),
         ...(this.entry.model ? { model: this.entry.model } : {}),
+        ...(this.queuedMs() !== undefined ? { queuedMs: this.queuedMs() } : {}),
+        ...(context ? { context } : {}),
         pendingApprovals: [...this.pending.values()].map((p) => ({
           id: p.id,
           sessionId: p.sessionID,
@@ -1638,36 +1796,13 @@ export class Turn {
         })),
         ...(this.error ? { error: this.error } : {}),
         ...(finishFacts?.finish ? { finish: finishFacts.finish } : {}),
-        ...(this.stopReason !== 'response_loop' && classified.warnings ? { warnings: classified.warnings } : {}),
+        ...(finalWarnings && finalWarnings.length ? { warnings: finalWarnings } : {}),
         resendSafety,
         ...(this.upstreamRetry ? { upstreamRetry: this.upstreamRetry } : {}),
         ...(this.upstreamRead ? { upstreamRead: this.upstreamRead } : {}),
         ...(this.responseLoop ? { responseLoop: this.responseLoop } : {}),
         elapsedMs: Math.max(0, this.clock.monotonicNow() - this.startAt),
-        hint:
-          this.stopReason === 'response_loop'
-            ? this.executionState === 'stopped' && this.cleanup === 'complete'
-              ? 'OpenCode was stopped after repeated unusable model responses. Check the model/gateway and inspect partial effects before trying again.'
-              : 'Stop could not be confirmed; OpenCode may still be issuing requests. Do not resend. Use opencode-status or opencode-cancel to inspect the session.'
-            : this.error?.name === 'SUBMISSION_UNCONFIRMED'
-            ? 'Submission is unconfirmed. Do not resend. Use opencode-status to observe the existing session.'
-            : this.error?.name === 'UnknownError' && this.error.message === MALFORMED_STREAM_MESSAGE
-            ? 'OpenCode could not parse a response. Check the model/gateway response format; inspect partial effects before retrying.'
-            : this.executionState === 'unknown'
-            ? 'Use opencode-cancel to confirm stop before continuing.'
-            : this.error?.name === 'EMPTY_RESPONSE'
-              ? 'OpenCode finished without answer text. No tool or patch activity was observed. Inspect the result, then retry once after a short wait if appropriate.'
-            : classified.warnings?.some((warning) => warning.code === 'EMPTY_RESPONSE')
-              ? 'Tool activity occurred, but the final answer is empty. Inspect opencode-output and the turn diff before continuing.'
-            : classified.warnings?.some((warning) => warning.code === 'TRUNCATED')
-              ? 'The provider truncated the answer. Use opencode-reply to continue from the stopping point.'
-            : unsolicitedAbort
-              ? 'OpenCode aborted this turn without a request from this call (possibly a delayed ' +
-                'abort from an earlier timed-out cancel, or another client). Inspect partial ' +
-                'effects with opencode-output or the turn diff before retrying.'
-              : status === 'running' || status === 'waiting_for_approval'
-                ? 'Use opencode-status to observe this turn.'
-                : 'Use opencode-reply to continue or opencode-end to finish.',
+        hint,
       };
       const artifacts = this.outputArtifacts;
       if (this.outputSchema && artifacts.hasTerminalAssistant) {
@@ -1690,6 +1825,12 @@ export class Turn {
     }
     this.doneValue = result;
     this.phase = 'terminal';
+    if (this.ticket) {
+      if (this.executionState === 'unknown') {
+        this.ticket.hold();
+        this.onHeld?.(this.ticket);
+      } else this.ticket.release();
+    }
     this.readyResolve();
     try {
       const committed = this.onCommit(result);
@@ -1708,10 +1849,21 @@ export class Turn {
 
   snapshot(): TurnResult {
     if (this.doneValue) return this.doneValue;
+    const queue = this.ticket?.queueInfo();
     const summary = this.buildSummary({ status: 'running' });
     summary.toolCallCount = Math.max(summary.toolCallCount, this.maxToolCallCount);
+    const { contextUsage, ...summaryRest } = summary;
     const lastAssistant = this.interval.filter((m) => m.info.role === 'assistant' && m.info.summary !== true).at(-1);
     const facts = lastAssistant ? interpretFinish(lastAssistant, this.interval, this.clock.wallNow(), this.activityObserved) : undefined;
+    const resolvedLimit = contextUsage ? this.limitsForModel?.(contextUsage.model) : undefined;
+    const baseHint = queue
+      ? 'This turn is queued for a run slot and will start automatically; keep observing it with opencode-status and do not resend it.'
+      : this.stopReason === 'response_loop'
+        ? 'Stop could not be confirmed; OpenCode may still be issuing requests. Do not resend. Use opencode-status or opencode-cancel to inspect the session.'
+        : 'Use opencode-status to observe this turn.';
+    const { context, warnings: finalWarnings, hint } = buildContextResult(
+      contextUsage, this.outputArtifacts.compacted, resolvedLimit, facts?.warnings, baseHint,
+    );
     return {
       kind: 'turn',
       threadId: this.entry.id,
@@ -1721,11 +1873,14 @@ export class Turn {
       status: this.pending.size ? 'waiting_for_approval' : 'running',
       executionState: this.executionState,
       cleanup: this.cleanup,
-      ...summary,
-      output: { state: 'pending', toolCallCount: Math.max(summary.toolCallCount, this.maxToolCallCount), partial: true },
+      ...summaryRest,
+      ...(queue ? { content: '' } : {}),
+      output: { state: 'pending', toolCallCount: Math.max(summaryRest.toolCallCount, this.maxToolCallCount), partial: true },
       directory: this.entry.directory,
       ...(this.entry.agent ? { agent: this.entry.agent } : {}),
       ...(this.entry.model ? { model: this.entry.model } : {}),
+      ...(queue ? { queue } : this.queuedMs() !== undefined ? { queuedMs: this.queuedMs() } : {}),
+      ...(context ? { context } : {}),
       pendingApprovals: [...this.pending.values()].map((p) => ({
         id: p.id,
         sessionId: p.sessionID,
@@ -1734,14 +1889,12 @@ export class Turn {
       })),
       elapsedMs: Math.max(0, this.clock.monotonicNow() - this.startAt),
       ...(facts?.finish ? { finish: facts.finish } : {}),
-      ...(facts?.warnings ? { warnings: facts.warnings } : {}),
+      ...(finalWarnings && finalWarnings.length ? { warnings: finalWarnings } : {}),
       resendSafety: !this.submissionDispatched || this.submissionRejected ? 'not_submitted' : 'unknown',
       ...(this.upstreamRetry ? { upstreamRetry: this.upstreamRetry } : {}),
       ...(this.upstreamRead ? { upstreamRead: this.upstreamRead } : {}),
       ...(this.responseLoop ? { responseLoop: this.responseLoop } : {}),
-      hint: this.stopReason === 'response_loop'
-        ? 'Stop could not be confirmed; OpenCode may still be issuing requests. Do not resend. Use opencode-status or opencode-cancel to inspect the session.'
-        : 'Use opencode-status to observe this turn.',
+      hint,
     };
   }
 
@@ -1764,7 +1917,7 @@ export class Turn {
     this.approvalWake?.();
     const beat = () => {
       try {
-        ctx.progress?.(this.progressText);
+        ctx.progress?.(this.queueProgress() ?? this.progressText);
       } catch {
         this.attached.delete(item);
         return;
@@ -1778,24 +1931,22 @@ export class Turn {
     };
     ctx.signal.addEventListener('abort', onAbort);
     if (ctx.signal.aborted) onAbort();
-    // For a non-owner attach (an observer, or a duplicate request-id replay via engine.ts's
-    // duplicateResult), waitSeconds bounds the WHOLE call — admission wait plus observation wait
-    // combined — through one shared deadline, computed once up front. Without this, a slow
-    // admission (SSE connect/warm-up/recovery/POST) would let each phase separately consume the
-    // full waitSeconds, so a caller's positive wait could silently double. The owner path is
-    // unchanged: it always waits out its own admission before its own observation timer starts.
+    // A positive wait uses one deadline across queue, admission and observation. Keep the
+    // legacy immediate-grant waitSeconds:0 owner behavior (wait through admission); queued
+    // owners return their visible queued snapshot immediately.
     const observerDeadline =
-      !owner && waitSeconds !== undefined ? this.clock.monotonicNow() + waitSeconds * 1000 : undefined;
+      waitSeconds !== undefined ? this.clock.monotonicNow() + waitSeconds * 1000 : undefined;
     const observerRemainingMs = (): number => Math.max(0, (observerDeadline ?? Infinity) - this.clock.monotonicNow());
     try {
-      if (owner) {
+      if (waitSeconds === 0 && (!owner || this.ticket?.everQueued) && !ctx.signal.aborted) {
+        if (this.admissionFailure) throw this.admissionFailure;
+        return this.doneValue ?? this.snapshot();
+      }
+      if (owner && (waitSeconds === undefined || waitSeconds === 0)) {
         await this.ready;
       } else {
-        // U06 (r1-hostile-client-2): an observer's wait-seconds must bound admission too — a slow
-        // SSE connect / warm-up / recovery / POST must not make wait-seconds:0 block for minutes.
-        // Race `ready` itself against the wait timer and the detach signal; a timer/detach win
-        // during admission returns the current (admitting) snapshot. The owner path is unchanged:
-        // it always waits out its own admission.
+        // Race admission against the same wait timer. Expiry returns a snapshot and leaves the
+        // Turn running; a later admission failure remains available to status and replay.
         if (ctx.signal.aborted) return this.doneValue ?? this.snapshot();
         let cancelAdmitWait = () => {};
         let onAdmitDetach = () => {};
@@ -1815,15 +1966,13 @@ export class Turn {
       }
       if (this.admissionFailure) throw this.admissionFailure;
       if (this.doneValue) return this.done;
-      if ((waitSeconds === 0 && !ctx.signal.aborted) || (!owner && ctx.signal.aborted))
+      if ((waitSeconds === 0 && !ctx.signal.aborted) || (!owner && ctx.signal.aborted) ||
+          (observerDeadline !== undefined && observerRemainingMs() <= 0))
         return this.snapshot();
       let cancelWait = () => {};
       let onDetach = () => {};
       const observation = new Promise<TurnResult>((resolve) => {
-        if (owner) {
-          if (waitSeconds !== undefined)
-            cancelWait = this.clock.schedule(waitSeconds * 1000, () => resolve(this.snapshot()));
-        } else if (observerDeadline !== undefined) {
+        if (observerDeadline !== undefined) {
           cancelWait = this.clock.schedule(observerRemainingMs(), () => resolve(this.snapshot()));
         }
         if (!owner) {

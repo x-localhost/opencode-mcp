@@ -78,6 +78,7 @@ test('A: concurrent first admissions share one unabortable directory warm-up', a
   connection.api.warmInstance = async (directory, request) => {
     connection.api.calls.push({ method: 'warmInstance', args: [directory, request] });
     await gate;
+    return { providerCatalog: {} };
   };
   connection.api.onPrompt = (id) => {
     connection.api.histories.get(id)!.push(message('m01', 'user'), message('m02', 'assistant', 'stop'));
@@ -102,6 +103,7 @@ test('A: stop during warm-up waits for it and prevents POST', async () => {
   connection.api.warmInstance = async () => {
     warms++;
     await gate;
+    return { providerCatalog: {} };
   };
   const starting = engine.start({ prompt: 'work', waitSeconds: 0 }, context());
   await flush();
@@ -160,6 +162,7 @@ test('A: failed warm-up retries, then every turn warms even across generations',
   connection.api.warmInstance = async () => {
     warms++;
     if (warms === 1) throw new OpencodeHttpError('busy', 503, 'ServerError');
+    return { providerCatalog: {} };
   };
   connection.api.onPrompt = (id) => {
     const history = connection.api.histories.get(id)!;
@@ -186,7 +189,7 @@ test('A: warm-up timeout releases a stopped admission without aborting warm-up',
   let request: unknown;
   connection.api.warmInstance = async (_directory, req) => {
     request = req;
-    return new Promise<void>(() => {});
+    return new Promise<{ providerCatalog: unknown }>(() => {});
   };
   const starting = engine.start({ prompt: 'work', waitSeconds: 0 }, context());
   await flush();

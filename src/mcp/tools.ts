@@ -72,7 +72,8 @@ const idAliasShape = {
 
 const MODEL_DESCRIPTION =
   "Model to use, in the form 'provider/model' (e.g. 'my-gateway/coder-large'), not a bare " +
-  'model name. Omit to use the server-configured default, or OpenCode\'s own resolution if none is set.';
+  'model name. Omit to use the server-configured default, or OpenCode\'s own resolution if none is set. ' +
+  'If the task reads many files, check usableInputTokens in opencode-info section models first.';
 
 const AGENT_DESCRIPTION =
   "OpenCode's primary agent for this session (e.g. 'build', 'plan', or a custom agent). Omit to " +
@@ -89,8 +90,8 @@ const WAIT_SECONDS_DESCRIPTION =
   "itself. On expiry this call returns a 'running' (or 'waiting_for_approval') snapshot while the " +
   'turn keeps executing on the server — continue observing it with opencode-status. Omit to block ' +
   'until the turn reaches a terminal state (subject to timeout-seconds); 0 returns immediately ' +
-  'after admission — combine with opencode-status ids/wait-for to fan a batch of turns out in ' +
-  'parallel and then observe them together.';
+  '(after admission, or at once if the turn is queued) — combine with opencode-status ids/wait-for ' +
+  'to fan a batch of turns out in parallel and then observe them together.';
 
 const REQUEST_ID_DESCRIPTION =
   'Idempotency key for this exact call (pattern: starts with a letter/digit, then up to 127 more ' +
@@ -366,6 +367,33 @@ const infoInputSchema = z.strictObject({
 // src/types.ts and don't need a second, parallel zod declaration here.
 // ---------------------------------------------------------------------------
 
+// Context-concurrency design §3/§6: TurnQueueInfo/TurnContextInfo, declared once here and reused
+// on both the top-level TurnResult shape and SessionSummary's `sessions[].queue` below — both are
+// plain `z.object` (not `z.strictObject`), so every field TurnQueueInfo/TurnContextInfo can carry
+// must be declared (docs/sdk-notes.md: a plain z.object still advertises
+// `additionalProperties:false` in the JSON Schema shown to the client, even though actual
+// `~standard.validate` parsing silently strips undeclared keys instead of rejecting them).
+const queueInfoSchema = z.object({
+  position: z.number(),
+  running: z.number(),
+  maxRunning: z.number().nullable(),
+  blockedBy: z.enum(['global', 'model']),
+  model: z.string().optional(),
+  modelRunning: z.number().optional(),
+  modelMaxRunning: z.number().optional(),
+  queuedMs: z.number(),
+});
+
+const contextInfoSchema = z.object({
+  model: z.string(),
+  used: z.number().optional(),
+  peakUsed: z.number().optional(),
+  usableInputTokens: z.number().optional(),
+  ratio: z.number().optional(),
+  limitSource: z.enum(['opencode', 'profile', 'mixed']).optional(),
+  compacted: z.boolean(),
+});
+
 // Exported for unit tests (test/mcp/overload-presentation.test.ts) to validate structuredContent
 // against the exact schema the SDK enforces, without spawning a server.
 export const outputSchema = z.object({
@@ -419,11 +447,28 @@ export const outputSchema = z.object({
       condition: z.literal('MODEL_OVERLOADED').optional(),
     })
     .optional(),
-  tokens: z.object({ input: z.number(), output: z.number(), reasoning: z.number() }).optional(),
+  tokens: z
+    .object({
+      input: z.number(),
+      output: z.number(),
+      reasoning: z.number(),
+      // Context-concurrency design §3: cumulative cache.read/cache.write sums for this turn, only
+      // present when at least one observed assistant reported a cache usage.
+      cache: z.object({ read: z.number(), write: z.number() }).optional(),
+    })
+    .optional(),
   cost: z.number().optional(),
   elapsedMs: z.number().optional(),
   truncated: z.boolean().optional(),
   hint: z.string().optional(),
+
+  // Context-concurrency design §3/§6: run-slot queue state and per-turn model context usage.
+  // `queue` is present only while a turn is waiting for a run slot; `queuedMs` survives the grant
+  // (or a cancel/timeout while queued) as the total time spent queued. `context` is present once an
+  // assistant with usage was observed in this turn's execution interval.
+  queue: queueInfoSchema.optional(),
+  queuedMs: z.number().optional(),
+  context: contextInfoSchema.optional(),
 
   // overload design §B (TurnResult v0.3-followup additions; src/types.ts). All optional/additive
   // so this schema keeps validating every pre-existing producer unchanged.
@@ -431,7 +476,10 @@ export const outputSchema = z.object({
   warnings: z
     .array(
       z.object({
-        code: z.enum(['EMPTY_RESPONSE', 'TRUNCATED', 'NONSTANDARD_FINISH']),
+        // Context-concurrency design §3/§5.3: 'CONTEXT_HIGH' added for a successful turn whose
+        // last observed context ratio is >= 0.8 (a closed enum here would
+        // fail output validation on an otherwise-successful result).
+        code: z.enum(['EMPTY_RESPONSE', 'TRUNCATED', 'NONSTANDARD_FINISH', 'CONTEXT_HIGH']),
         message: z.string(),
       }),
     )
@@ -470,6 +518,8 @@ export const outputSchema = z.object({
         status: z.string(),
         turns: z.number(),
         updatedAt: z.number(),
+        // Context-concurrency design §3: SessionSummary gains the same `queue` shape as TurnResult.
+        queue: queueInfoSchema.optional(),
       }),
     )
     .optional(),
@@ -562,7 +612,10 @@ const OPENCODE_DESCRIPTION =
   'to keep this response small (the full answer stays readable with opencode-output); `request-id` ' +
   'makes a retried call safe to repeat; `output-schema` asks the final message to be one JSON value ' +
   'matching a schema. To run several tasks in parallel, start each with wait-seconds:0 and check ' +
-  'them together with opencode-status ids/wait-for.';
+  'them together with opencode-status ids/wait-for. Pass `model` explicitly when sizing matters ' +
+  '(opencode-info section models lists usableInputTokens). If all run slots are busy the turn ' +
+  'queues (queue object) and starts automatically. PROMPT_TOO_LARGE means the prompt alone cannot ' +
+  'fit the model; nothing was sent.';
 
 const OPENCODE_REPLY_DESCRIPTION =
   'Use this to continue an existing OpenCode session started with opencode, after reading its ' +
@@ -571,7 +624,11 @@ const OPENCODE_REPLY_DESCRIPTION =
   'elapses, up to the turn timeout); the answer is in structuredContent.content. `sandbox` and ' +
   `\`approval-policy\` stay fixed for the life of the session. ${CANCEL_SENTENCE} Same \`detail\`/` +
   '`max-output-chars`/`request-id`/`output-schema` options as opencode; `output-schema` applies ' +
-  'only to this turn, never a stored default.';
+  'only to this turn, never a stored default. Pass `model` explicitly when sizing matters ' +
+  "(opencode-info section models lists usableInputTokens); omitted, the session's stored model is " +
+  'used. If all run slots are busy this reply queues (queue object) and starts automatically. ' +
+  'PROMPT_TOO_LARGE means the prompt alone cannot fit the model; nothing was sent and the session ' +
+  'stays idle.';
 
 const OPENCODE_STATUS_DESCRIPTION =
   'Use this to check on or wait for a running OpenCode turn, or — with no id — to list the ' +
@@ -583,7 +640,9 @@ const OPENCODE_STATUS_DESCRIPTION =
   'wait-seconds:0 on opencode/opencode-reply to fan work out in parallel, then `wait-for` "any" ' +
   '(default) or "all" here to collect the results; batch items are always compact and ' +
   '`max-output-chars` becomes the shared answer budget split across them. `detail`/`max-output-chars` ' +
-  'shrink a single-session answer the same way as on opencode.';
+  'shrink a single-session answer the same way as on opencode. Turns waiting for a run slot (a ' +
+  'queue object, in a single result or a batch item) are not ready yet; queue time does not count ' +
+  'against timeout-seconds.';
 
 const OPENCODE_OUTPUT_DESCRIPTION =
   "Page through a turn's full retained answer, tool-call log, structured output, or the " +
@@ -604,7 +663,10 @@ const OPENCODE_INFO_DESCRIPTION =
   "server's allowed working-directory roots. \"models\"/\"agents\"/\"roots\" are paginated " +
   '(offset/limit) and return a `snapshot-id` to keep reading the same consistent snapshot; ' +
   'pagination arguments are invalid for "server". Read-only; the "server" section never starts ' +
-  'OpenCode.';
+  'OpenCode. "models" items add `limit` {context?, input?, output?}, `usableInputTokens` ' +
+  "(OpenCode's input budget before it compacts; its own prompt uses ~8k tokens of it), `maxRunning` " +
+  'and `serverDefault`; "server" adds `limits` (maxRunningTurns/maxQueuedTurns/queueTimeoutSeconds) ' +
+  'and live `concurrency` (running/queued/perModel).';
 
 const OPENCODE_CANCEL_DESCRIPTION =
   'Use this to stop the turn currently running on an OpenCode session without ending the ' +
@@ -632,7 +694,12 @@ const RETRYABLE_SENTENCE =
   'error.retryable describes a transient fault, not permission to repeat a prompt. Check ' +
   'executionState, cleanup, and resendSafety first.';
 
-const SERVER_INSTRUCTIONS =
+// Base text (no run-slot/queue numbers — those are only known once a Config is built). Kept
+// private: every real caller goes through buildServerInstructions(config) below, which appends
+// the context-concurrency sizing/queue sentence with this process's actual configured numbers
+// built in (context-concurrency design §6: "build the actual numbers into
+// buildServerInstructions(config) so Claude Code needs no opencode-info call before fanning out").
+const SERVER_INSTRUCTIONS_BASE =
   'Delegate a coding task with "opencode"; read the answer from structuredContent.content. ' +
   'Continue the conversation with "opencode-reply". Poll or wait with "opencode-status" while ' +
   'structuredContent.status is "running" or "waiting_for_approval" (it also lists sessions when ' +
@@ -641,6 +708,43 @@ const SERVER_INSTRUCTIONS =
   `a cooperative permission profile for OpenCode's own tools, not OS-level process isolation. ` +
   `${CANCEL_SENTENCE} On SESSION_BUSY, poll "opencode-status"; on CLEANUP_UNCONFIRMED the session ` +
   `is still tracked, so retry "opencode-end" or "opencode-cancel". ${RETRYABLE_SENTENCE}`;
+
+// Context-concurrency design §6 (caller-guidance wording):
+// "Up to N turns run at once; extra turns queue (max M) and start automatically. A result with a
+// queue object is waiting for a run slot, not stuck: keep observing it and never resend it. ..."
+// With the cap disabled (config.maxRunningTurns === 0) the sentence says so instead of a number.
+// With the queue disabled (config.maxQueuedTurns === 0) there is no "queue (max 0)" to describe —
+// extra turns are rejected outright with RUN_QUEUE_CAPACITY, so the sentence says that instead.
+function buildQueueSizingSentence(config: Config): string {
+  const runPhrase =
+    config.maxRunningTurns === 0
+      ? 'Turns run without a run-slot cap'
+      : `Up to ${config.maxRunningTurns} turns run at once`;
+  const queuePhrase =
+    config.maxQueuedTurns === 0
+      ? 'no queue: extra turns are rejected with RUN_QUEUE_CAPACITY'
+      : `extra turns queue (max ${config.maxQueuedTurns}) and start automatically — a result with ` +
+        'a queue object is waiting for a run slot: keep observing it and never resend it';
+  return (
+    `${runPhrase}; ${queuePhrase}. ` +
+    'For parallel work start each task with wait-seconds:0, then collect with opencode-status ids. ' +
+    "Size tasks per model: opencode-info section models gives usableInputTokens; OpenCode's own " +
+    'prompt uses ~8k tokens of it and files the task reads count too (~4 chars per token). Keep ' +
+    'prompt plus files well under it, else split or pass a larger-context model. On warning ' +
+    'CONTEXT_HIGH, continue in a new session with a self-contained prompt and opencode-end the old one.'
+  );
+}
+
+/** Context-concurrency design §6: SERVER_INSTRUCTIONS with this process's actual configured
+ * run-slot/queue numbers (OPENCODE_MCP_MAX_RUNNING_TURNS/OPENCODE_MCP_MAX_QUEUED_TURNS) built in.
+ * Called once per connection (src/mcp/server.ts's `McpServer` construction), so the length check
+ * below is this function's construction-time equivalent of the static module-load checks above —
+ * the actual numbers (and therefore the exact length) aren't known until a Config exists. */
+export function buildServerInstructions(config: Config): string {
+  const instructions = `${SERVER_INSTRUCTIONS_BASE} ${buildQueueSizingSentence(config)}`;
+  if (instructions.length >= 2048) throw new Error('server instructions exceed 2048 chars');
+  return instructions;
+}
 
 for (const [name, desc] of [
   ['opencode', OPENCODE_DESCRIPTION],
@@ -652,9 +756,7 @@ for (const [name, desc] of [
 ] as const) {
   if (desc.length >= 2048) throw new Error(`tool description for ${name} exceeds 2048 chars`);
 }
-if (SERVER_INSTRUCTIONS.length >= 2048) throw new Error('server instructions exceed 2048 chars');
-
-export { SERVER_INSTRUCTIONS };
+if (SERVER_INSTRUCTIONS_BASE.length >= 2048) throw new Error('server instructions base exceeds 2048 chars');
 
 // ---------------------------------------------------------------------------
 // Id alias resolution (design.md §4: "exactly one id property must be present")
@@ -800,6 +902,13 @@ const ERROR_HINTS: Partial<Record<EngineErrorCode, string>> = {
     'The original call with this request-id is still being admitted; retry the same request-id shortly or poll opencode-status.',
   SESSION_CAPACITY:
     'Too many tracked sessions; end finished sessions with opencode-end, or ask an operator to raise OPENCODE_MCP_MAX_SESSIONS.',
+  // Context-concurrency design §6: exact hint texts.
+  RUN_QUEUE_CAPACITY:
+    'All run slots and the queue are full. Nothing was submitted; retry after running turns finish ' +
+    '(opencode-info section "server" shows concurrency).',
+  PROMPT_TOO_LARGE:
+    'The prompt alone does not fit the model. Nothing was submitted; split the task or pass a ' +
+    'larger-context model (opencode-info section "models").',
 };
 
 // overload design §B "Recommended exact hint themes": the OPENCODE_OVERLOADED hint quotes

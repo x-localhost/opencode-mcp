@@ -37,9 +37,19 @@
 #      classification, bounded 429/529 provider retries, and a slow-first-token non-trip — its own
 #      step/file so it gets its own PASS/FAIL/SKIP line and TAP accounting (never re-run by, or
 #      re-running, the main or feature scenarios).
-#   7. Node 20 bundle smoke: `docker run --rm --network none -v <dir>:/w -w /w node:20
+#   7. Context-concurrency scenarios: `docker run --rm --network none
+#      --name ocmcp-e2e-ctxconc-<pid> ocmcp-e2e:local
+#      node --test e2e/ctx-concurrency.test.mjs [--test-name-pattern=<only>]` — the context-aware
+#      model sizing + run-slot cap scenarios (docs/design.md §13):
+#      per-model limit/usableInputTokens/limitSource/maxRunning and server concurrency/capabilities
+#      via opencode-info, the PROMPT_TOO_LARGE pre-check, per-turn context usage and CONTEXT_HIGH,
+#      the run-slot cap queueing extra starts, cancelling a queued turn, a per-model cap, and the
+#      large-catalog (no enabled_providers) regression — its own step/file so it gets its own
+#      PASS/FAIL/SKIP line and TAP accounting (never re-run by, or re-running, the main/feature/
+#      overload scenarios).
+#   8. Node 20 bundle smoke: `docker run --rm --network none -v <dir>:/w -w /w node:20
 #      node e2e/bundle-smoke.mjs` (skipped if --only was given and does not match "bundle"/"j").
-#   8. npm packaging check: `npm pack` on gram (node:22, same npm cache volume as step 2), then in
+#   9. npm packaging check: `npm pack` on gram (node:22, same npm cache volume as step 2), then in
 #      a separate, otherwise-clean node:22 container (`--network none`, no e2e Docker image),
 #      `npm install -g --offline <tarball>` and run e2e/packaging-check.mjs, which spawns the
 #      installed `opencode-mcp` command (the real npm bin symlink, not `node dist/index.js`) and
@@ -48,9 +58,9 @@
 #      the tarball is a local file, and its only runtime deps (@modelcontextprotocol/server, zod)
 #      were already fetched into the shared ocmcp-npm-cache volume by step 2's `npm ci` moments
 #      earlier at the exact pinned versions.
-#   9. If --with-claude: `docker run ... node --test e2e/claude-stretch.test.mjs` with
+#   10. If --with-claude: `docker run ... node --test e2e/claude-stretch.test.mjs` with
 #      E2E_WITH_CLAUDE=1 (skipped if --only was given and does not match "claude"/"k").
-#   10. Prints a compact summary; exits non-zero if anything failed.
+#   11. Prints a compact summary; exits non-zero if anything failed.
 #
 # Options:
 #   --only <substring>   only run scenarios whose node:test name contains <substring>
@@ -249,6 +259,7 @@ tap_check() {
 MAIN_STATUS=0
 FEATURES_STATUS=0
 OVERLOAD_STATUS=0
+CTXCONC_STATUS=0
 BUNDLE_STATUS=0
 PACKAGING_STATUS=0
 CLAUDE_STATUS=0
@@ -269,12 +280,17 @@ FEATURES_APPLICABLE=1
 # step/file so it gets its own PASS/FAIL/SKIP line and never re-runs (or is re-run by) the main or
 # feature scenarios.
 OVERLOAD_APPLICABLE=1
+# Same idea, for the context-concurrency scenarios (docs/design.md §13, e2e/ctx-concurrency.test.mjs):
+# its own step/file so it gets its own PASS/FAIL/SKIP line and never re-runs (or is re-run by) the
+# main/feature/overload scenarios.
+CTXCONC_APPLICABLE=1
 
 MAIN_LOG="$(mktemp)"
 FEATURES_LOG="$(mktemp)"
 OVERLOAD_LOG="$(mktemp)"
+CTXCONC_LOG="$(mktemp)"
 CLAUDE_LOG="$(mktemp)"
-trap 'rm -f "$MAIN_LOG" "$FEATURES_LOG" "$OVERLOAD_LOG" "$CLAUDE_LOG"' EXIT
+trap 'rm -f "$MAIN_LOG" "$FEATURES_LOG" "$OVERLOAD_LOG" "$CTXCONC_LOG" "$CLAUDE_LOG"' EXIT
 
 echo "==> running main scenarios (a-i) in $IMAGE_TAG, --network none"
 set +e
@@ -319,6 +335,20 @@ if [ -n "$ONLY" ] && grep -qF "# Subtest: e2e/overload.test.mjs" "$OVERLOAD_LOG"
   echo "==> overload scenarios: --only '$ONLY' matches no scenario name in e2e/overload.test.mjs — SKIP"
 else
   tap_check "overload scenarios" "$OVERLOAD_LOG" OVERLOAD_STATUS "e2e/overload.test.mjs"
+fi
+
+echo "==> running context-concurrency scenarios (model sizing, PROMPT_TOO_LARGE, context usage, run-slot cap, queue cancel, per-model cap, large-catalog regression) in $IMAGE_TAG, --network none"
+set +e
+ssh "$REMOTE_HOST" "docker run --rm --network none --name 'ocmcp-$E2E_LABEL-ctxconc-$$' $KEEP_ENV '$IMAGE_TAG' \
+  node --test $PATTERN_FLAG e2e/ctx-concurrency.test.mjs" 2>&1 | tee "$CTXCONC_LOG"
+CTXCONC_STATUS=${PIPESTATUS[0]}
+set -e
+if [ -n "$ONLY" ] && grep -qF "# Subtest: e2e/ctx-concurrency.test.mjs" "$CTXCONC_LOG"; then
+  CTXCONC_APPLICABLE=0
+  CTXCONC_STATUS=0
+  echo "==> context-concurrency scenarios: --only '$ONLY' matches no scenario name in e2e/ctx-concurrency.test.mjs — SKIP"
+else
+  tap_check "context-concurrency scenarios" "$CTXCONC_LOG" CTXCONC_STATUS "e2e/ctx-concurrency.test.mjs"
 fi
 
 RUN_BUNDLE=1
@@ -406,6 +436,11 @@ if [ "$OVERLOAD_APPLICABLE" -eq 1 ]; then
 else
   printf 'overload scenarios:      SKIP (--only does not match)\n'
 fi
+if [ "$CTXCONC_APPLICABLE" -eq 1 ]; then
+  printf 'ctx-concurrency scenarios: %s\n' "$([ "$CTXCONC_STATUS" -eq 0 ] && echo PASS || echo "FAIL ($CTXCONC_STATUS)")"
+else
+  printf 'ctx-concurrency scenarios: SKIP (--only does not match)\n'
+fi
 if [ "$RUN_BUNDLE" -eq 1 ]; then
   printf 'bundle smoke (j, node20): %s\n' "$([ "$BUNDLE_STATUS" -eq 0 ] && echo PASS || echo "FAIL ($BUNDLE_STATUS)")"
 elif [ -n "$ONLY" ]; then
@@ -434,18 +469,20 @@ ANY_APPLICABLE=0
 [ "$MAIN_APPLICABLE" -eq 1 ] && ANY_APPLICABLE=1
 [ "$FEATURES_APPLICABLE" -eq 1 ] && ANY_APPLICABLE=1
 [ "$OVERLOAD_APPLICABLE" -eq 1 ] && ANY_APPLICABLE=1
+[ "$CTXCONC_APPLICABLE" -eq 1 ] && ANY_APPLICABLE=1
 [ "$RUN_BUNDLE" -eq 1 ] && ANY_APPLICABLE=1
 [ "$RUN_PACKAGING" -eq 1 ] && ANY_APPLICABLE=1
 { [ "$WITH_CLAUDE" -eq 1 ] && [ "${RUN_CLAUDE:-0}" -eq 1 ]; } && ANY_APPLICABLE=1
 
 EXIT_STATUS=0
 if [ -n "$ONLY" ] && [ "$ANY_APPLICABLE" -eq 0 ]; then
-  echo "error: --only '$ONLY' matched nothing across the whole step selection (main scenarios, feature scenarios, overload scenarios, bundle smoke, packaging check$([ "$WITH_CLAUDE" -eq 1 ] && printf '%s' ', claude stretch'))" >&2
+  echo "error: --only '$ONLY' matched nothing across the whole step selection (main scenarios, feature scenarios, overload scenarios, ctx-concurrency scenarios, bundle smoke, packaging check$([ "$WITH_CLAUDE" -eq 1 ] && printf '%s' ', claude stretch'))" >&2
   EXIT_STATUS=1
 fi
 [ "$MAIN_APPLICABLE" -eq 0 ] || [ "$MAIN_STATUS" -eq 0 ] || EXIT_STATUS=1
 [ "$FEATURES_APPLICABLE" -eq 0 ] || [ "$FEATURES_STATUS" -eq 0 ] || EXIT_STATUS=1
 [ "$OVERLOAD_APPLICABLE" -eq 0 ] || [ "$OVERLOAD_STATUS" -eq 0 ] || EXIT_STATUS=1
+[ "$CTXCONC_APPLICABLE" -eq 0 ] || [ "$CTXCONC_STATUS" -eq 0 ] || EXIT_STATUS=1
 [ "$BUNDLE_STATUS" -eq 0 ] || EXIT_STATUS=1
 [ "$PACKAGING_STATUS" -eq 0 ] || EXIT_STATUS=1
 [ "$CLAUDE_STATUS" -eq 0 ] || EXIT_STATUS=1

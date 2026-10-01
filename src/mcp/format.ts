@@ -332,6 +332,38 @@ function shrinkToBudget(
   return truncated;
 }
 
+// Context-concurrency design §6: one-line text-mirror renderings of TurnQueueInfo/TurnContextInfo,
+// shared by the top-level turn-like text (renderTurnLikeText) and each batch item
+// (renderBatchText) so both stay worded identically. `queue` only appears while a turn is waiting
+// for a run slot; the global-vs-model wording matches this server's own queued-turn heartbeat text
+// ("Queued for an OpenCode run slot (position 3; 4/4 running)." / "... for corp/big
+// (position 1; model 2/2 running).").
+function renderQueueLine(queue: Record<string, unknown>): string {
+  const position = typeof queue.position === 'number' ? queue.position : '?';
+  if (queue.blockedBy === 'model' && typeof queue.model === 'string') {
+    const modelRunning = typeof queue.modelRunning === 'number' ? queue.modelRunning : '?';
+    const modelMaxRunning = typeof queue.modelMaxRunning === 'number' ? queue.modelMaxRunning : '?';
+    return `queued: position ${position} for ${queue.model} (model ${modelRunning}/${modelMaxRunning} running)`;
+  }
+  const running = typeof queue.running === 'number' ? queue.running : '?';
+  const maxRunning = queue.maxRunning === null ? 'unlimited' : typeof queue.maxRunning === 'number' ? queue.maxRunning : '?';
+  return `queued: position ${position} (${running}/${maxRunning} running)`;
+}
+
+// design.md §3/§5.3: `84% of 123904 (model)` when a usable budget/ratio is known, else a plain
+// `used N (model)` once only `used` is known (e.g. a profile-less, limit-less model).
+function renderContextLine(context: Record<string, unknown>): string | undefined {
+  const model = typeof context.model === 'string' ? context.model : undefined;
+  if (!model) return undefined;
+  if (typeof context.ratio === 'number' && typeof context.usableInputTokens === 'number') {
+    return `context: ${Math.round(context.ratio * 100)}% of ${context.usableInputTokens} (${model})`;
+  }
+  if (typeof context.used === 'number') {
+    return `context: used ${context.used} (${model})`;
+  }
+  return undefined;
+}
+
 function renderTurnLikeText(working: Record<string, unknown>, kind: string): string {
   const sessionId = typeof working.sessionId === 'string' ? working.sessionId : undefined;
   const status = typeof working.status === 'string' ? working.status : 'unknown';
@@ -339,6 +371,15 @@ function renderTurnLikeText(working: Record<string, unknown>, kind: string): str
 
   if (typeof working.content === 'string' && working.content.length > 0) {
     lines.push(working.content);
+  }
+  // Context-concurrency design §6: queue/context text mirrors, right after the answer so a
+  // text-only client sees immediately why `content` is empty (queued) or how full the window is.
+  if (working.queue && typeof working.queue === 'object') {
+    lines.push(renderQueueLine(working.queue as Record<string, unknown>));
+  }
+  if (working.context && typeof working.context === 'object') {
+    const contextLine = renderContextLine(working.context as Record<string, unknown>);
+    if (contextLine) lines.push(contextLine);
   }
   if (typeof working.finish === 'string' && working.finish.length > 0) {
     lines.push(`finish: ${working.finish}`);
@@ -472,6 +513,26 @@ function renderOutputText(working: Record<string, unknown>): string {
   return lines.join('\n');
 }
 
+// Context-concurrency design §5.2/§6: `corp/coding-model ctx=128000 out=4096 usable=123904
+// maxRunning=2`. Only fields actually present on this model's info item are rendered, in
+// ModelLimit's own field order (context, input, output), then usableInputTokens/maxRunning, then
+// a trailing " (server default)" when serverDefault is true. Identifiers (the model id itself) are
+// never shortened by this line — the surrounding array-shrink logic below only ever drops whole
+// entries.
+function formatModelLine(m: Record<string, unknown>): string {
+  const parts: string[] = [String(m.model ?? '?')];
+  const limit = m.limit && typeof m.limit === 'object' ? (m.limit as Record<string, unknown>) : undefined;
+  if (limit) {
+    if (typeof limit.context === 'number') parts.push(`ctx=${limit.context}`);
+    if (typeof limit.input === 'number') parts.push(`in=${limit.input}`);
+    if (typeof limit.output === 'number') parts.push(`out=${limit.output}`);
+  }
+  if (typeof m.usableInputTokens === 'number') parts.push(`usable=${m.usableInputTokens}`);
+  if (typeof m.maxRunning === 'number') parts.push(`maxRunning=${m.maxRunning}`);
+  const line = parts.join(' ');
+  return m.serverDefault === true ? `${line} (server default)` : line;
+}
+
 function renderInfoText(working: Record<string, unknown>): string {
   const section = typeof working.section === 'string' ? working.section : 'server';
   const lines: string[] = [`[opencode] info section=${section}`];
@@ -482,12 +543,38 @@ function renderInfoText(working: Record<string, unknown>): string {
   if (working.server && typeof working.server === 'object') {
     const server = working.server as Record<string, unknown>;
     lines.push(`mcpVersion=${server.mcpVersion ?? '?'} mode=${server.mode ?? '?'} connectionState=${server.connectionState ?? '?'}`);
+    // Context-concurrency design §4.4/§6: a live concurrency line plus the configured limits, only
+    // when the engine actually supplied them (both optional on InfoResult.server).
+    if (server.limits && typeof server.limits === 'object') {
+      const l = server.limits as Record<string, unknown>;
+      const parts: string[] = [];
+      if (l.maxRunningTurns !== undefined) {
+        parts.push(`maxRunningTurns=${l.maxRunningTurns === null ? 'unlimited' : l.maxRunningTurns}`);
+      }
+      if (l.maxQueuedTurns !== undefined) parts.push(`maxQueuedTurns=${l.maxQueuedTurns}`);
+      if (l.queueTimeoutSeconds !== undefined) {
+        parts.push(`queueTimeoutSeconds=${l.queueTimeoutSeconds === null ? 'disabled' : l.queueTimeoutSeconds}`);
+      }
+      if (parts.length > 0) lines.push(`limits: ${parts.join(' ')}`);
+    }
+    if (server.concurrency && typeof server.concurrency === 'object') {
+      const c = server.concurrency as Record<string, unknown>;
+      const limits = server.limits && typeof server.limits === 'object' ? (server.limits as Record<string, unknown>) : undefined;
+      const maxRunning = limits && limits.maxRunningTurns !== undefined ? (limits.maxRunningTurns === null ? 'unlimited' : limits.maxRunningTurns) : '?';
+      const running = typeof c.running === 'number' ? c.running : '?';
+      const queued = typeof c.queued === 'number' ? c.queued : '?';
+      const held = typeof c.heldUnknown === 'number' ? c.heldUnknown : '?';
+      lines.push(`run slots: ${running}/${maxRunning} running, ${queued} queued, ${held} held`);
+    }
   }
   // Mid-review finding 7: list the actual entries (model/agent names, root paths), not just a
   // count — a text-only client otherwise cannot act on this result at all.
   if (Array.isArray(working.models)) {
     const names = (working.models as Array<Record<string, unknown>>).map((m) => String(m.model ?? '?')).join(', ');
     lines.push(`models (${working.models.length}): ${names}`);
+    for (const m of working.models as Array<Record<string, unknown>>) {
+      lines.push(formatModelLine(m));
+    }
   }
   if (Array.isArray(working.agents)) {
     const names = (working.agents as Array<Record<string, unknown>>).map((a) => String(a.name ?? '?')).join(', ');
@@ -533,6 +620,13 @@ function renderBatchText(working: Record<string, unknown>): string {
         extras.push(`warnings=${codes}`);
       }
       if (typeof item.resendSafety === 'string') extras.push(`resend=${item.resendSafety}`);
+      // Context-concurrency design §6: the same queue/context one-liners as a single-turn result,
+      // kept inside the bracketed extras (batch items are always compact/terse).
+      if (item.queue && typeof item.queue === 'object') extras.push(renderQueueLine(item.queue as Record<string, unknown>));
+      if (item.context && typeof item.context === 'object') {
+        const contextLine = renderContextLine(item.context as Record<string, unknown>);
+        if (contextLine) extras.push(contextLine);
+      }
       lines.push(extras.length > 0 ? `${line} [${extras.join(' ')}]` : line);
     }
   }

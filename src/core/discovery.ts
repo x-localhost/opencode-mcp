@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
-import type { Clock } from '../types.ts';
+import type { Clock, ModelProfile } from '../types.ts';
+import { projectModelLimits, resolveModelLimit, validId } from './model-limits.ts';
 
 /** A safe model catalog entry. */
 export interface ModelEntry {
@@ -8,6 +9,11 @@ export interface ModelEntry {
   modelId: string;
   defaultForProvider: boolean;
   toolcall?: boolean;
+  limit?: { context?: number; input?: number; output?: number };
+  usableInputTokens?: number;
+  limitSource?: 'opencode' | 'profile' | 'mixed';
+  maxRunning?: number;
+  serverDefault?: boolean;
 }
 
 /** A safe agent catalog entry. */
@@ -16,11 +22,8 @@ export interface AgentEntry { name: string; mode: 'primary' | 'all' }
 /** A projection and count of rejected upstream entries. */
 export interface Projection<T> { items: T[]; dropped: number }
 
-/** Validates printable, bounded catalog identifiers. */
-export function validId(value: unknown): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= 200 &&
-    !/[\x00-\x1f\x7f-\x9f]/u.test(value);
-}
+// Lives in model-limits.ts so that module needs nothing from here (no import cycle).
+export { validId } from './model-limits.ts';
 
 /** Narrows an unknown value to a record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,7 +31,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Projects connected provider models into the public allowlist. */
-export function projectModels(response: unknown, filter?: { provider?: string }): Projection<ModelEntry> {
+export function projectModels(
+  response: unknown,
+  filter?: { provider?: string },
+  opts?: { profiles?: Record<string, ModelProfile>; defaultModel?: string },
+): Projection<ModelEntry> {
   if (!isRecord(response)) return { items: [], dropped: 0 };
   const connected = response.connected;
   const all = response.all;
@@ -36,6 +43,8 @@ export function projectModels(response: unknown, filter?: { provider?: string })
   if (!Array.isArray(connected) || !Array.isArray(all) || !isRecord(defaults)) {
     return { items: [], dropped: 0 };
   }
+  // Reuses the same connected/field validation as the limits projection instead of duplicating it.
+  const upstreamLimits = projectModelLimits(response);
   const connectedIds = new Set<string>();
   let dropped = 0;
   for (const id of connected) {
@@ -64,6 +73,15 @@ export function projectModels(response: unknown, filter?: { provider?: string })
         defaultForProvider: defaults[providerId] === modelId,
       };
       if (typeof toolcall === 'boolean') item.toolcall = toolcall;
+      const resolved = resolveModelLimit(item.model, upstreamLimits.get(item.model), opts?.profiles?.[item.model]);
+      if (resolved) {
+        if (Object.keys(resolved.limit).length > 0) item.limit = resolved.limit;
+        if (resolved.usableInputTokens !== undefined) item.usableInputTokens = resolved.usableInputTokens;
+        // Provenance only describes limit fields; a maxRunning-only profile leaves it unset.
+        if (Object.keys(resolved.limit).length > 0) item.limitSource = resolved.limitSource;
+        if (resolved.maxRunning !== undefined) item.maxRunning = resolved.maxRunning;
+      }
+      if (opts?.defaultModel !== undefined && item.model === opts.defaultModel) item.serverDefault = true;
       items.push(item);
     }
   }

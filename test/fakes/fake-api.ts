@@ -356,10 +356,11 @@ export class FakeOpencodeApi implements OpencodeApi {
     return this.questions.delete(id);
   }
 
-  async warmInstance(directory: string, req?: RequestOptions): Promise<void> {
+  async warmInstance(directory: string, req?: RequestOptions): Promise<{ providerCatalog: unknown }> {
     this.record('warmInstance', directory, req);
     this.warmedDirectories.add(directory);
     this.modelResolutionPending.delete(directory);
+    return { providerCatalog: this.providerResponse ?? {} };
   }
 
   async disposeInstance(directory: string, req?: RequestOptions): Promise<boolean> {

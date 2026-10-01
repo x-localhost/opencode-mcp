@@ -1,8 +1,10 @@
 import path from 'node:path';
-import type { OcMessage, OcMessageError, OcPart, ToolCallSummary, TurnResult, TurnStatus } from '../types.ts';
+import type { OcMessage, OcMessageError, OcPart, ToolCallSummary, TurnContextInfo, TurnResult, TurnStatus } from '../types.ts';
 import { safeSlice, trimDanglingSurrogates } from './text.ts';
 import type { RetainedToolCall } from './output-store.ts';
 import { parseRetryAfterSeconds } from '../opencode/retry.ts';
+import { contextCount } from './model-limits.ts';
+import type { ResolvedModelLimit } from './model-limits.ts';
 
 /** engine.ts's committed/keyed-fallback caches only ever need a handful of files to point someone
  * at what changed; unbounded like the interval itself would let one very large agentic turn keep an
@@ -202,6 +204,28 @@ function noAnswerText(outcome: { status: TurnStatus; error?: { name: string; mes
   return 'OpenCode finished without a text answer; see toolCalls/filesChanged.';
 }
 
+/** Observed context usage from this interval's NON-summary assistants (context-concurrency design
+ * §5.3): `model` is `providerID/modelID` of the LAST non-summary assistant that reported both ids;
+ * `used` is OpenCode's own overflow count (model-limits.ts's `contextCount`) for THAT SAME
+ * assistant only — a later assistant without usage never falls back to an earlier one; `peakUsed`
+ * is the max of the same count over every non-summary assistant in the interval. */
+export interface ContextUsage {
+  model: string;
+  used?: number;
+  peakUsed?: number;
+}
+
+export interface IntervalSummary {
+  content: string;
+  truncated: boolean;
+  filesChanged: string[];
+  toolCalls: ToolCallSummary[];
+  toolCallCount: number;
+  tokens?: { input: number; output: number; reasoning: number; cache?: { read: number; write: number } };
+  cost?: number;
+  contextUsage?: ContextUsage;
+}
+
 /** Build the public answer and compact usage details from one execution interval. `outcome` is
  * this interval's status/error (finish() passes the terminal outcome, snapshot() passes
  * `{ status: 'running' }`) so the no-answer-yet placeholder never contradicts it. */
@@ -210,7 +234,7 @@ export function summarizeInterval(
   directory: string,
   maxOutputChars: number,
   outcome: { status: TurnStatus; error?: { name: string; message: string } } = { status: 'completed' },
-) {
+): IntervalSummary {
   const assistants = messages.filter((message) => message.info.role === 'assistant');
   // Match extractOutputArtifacts: an earlier answer cannot stand in for a later final assistant.
   const answer = assistants.filter((message) => message.info.summary !== true).at(-1);
@@ -240,6 +264,9 @@ export function summarizeInterval(
   let output = 0;
   let reasoning = 0;
   let cost = 0;
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  let sawCache = false;
 
   for (const message of messages) {
     if (message.info.role === 'assistant') {
@@ -247,6 +274,11 @@ export function summarizeInterval(
       output += message.info.tokens?.output ?? 0;
       reasoning += message.info.tokens?.reasoning ?? 0;
       cost += message.info.cost ?? 0;
+      if (message.info.tokens?.cache) {
+        sawCache = true;
+        cacheRead += message.info.tokens.cache.read ?? 0;
+        cacheWrite += message.info.tokens.cache.write ?? 0;
+      }
     }
 
     for (const part of message.parts) {
@@ -270,6 +302,27 @@ export function summarizeInterval(
     }
   }
 
+  let contextUsage: ContextUsage | undefined;
+  {
+    let peak: number | undefined;
+    let lastModel: string | undefined;
+    let lastUsed: number | undefined;
+    for (const message of messages) {
+      if (message.info.role !== 'assistant' || message.info.summary === true) continue;
+      const count = contextCount(message.info.tokens);
+      if (count !== undefined) peak = peak === undefined ? count : Math.max(peak, count);
+      const providerID = message.info.providerID;
+      const modelID = message.info.modelID;
+      if (typeof providerID === 'string' && providerID && typeof modelID === 'string' && modelID) {
+        lastModel = `${providerID}/${modelID}`;
+        lastUsed = count;
+      }
+    }
+    if (lastModel !== undefined)
+      contextUsage = { model: lastModel, ...(lastUsed !== undefined ? { used: lastUsed } : {}),
+        ...(peak !== undefined ? { peakUsed: peak } : {}) };
+  }
+
   const allFiles = [...files];
   const filesChangedTruncated = allFiles.length > MAX_FILES_CHANGED;
   return {
@@ -278,9 +331,65 @@ export function summarizeInterval(
     filesChanged: filesChangedTruncated ? allFiles.slice(0, MAX_FILES_CHANGED) : allFiles,
     toolCalls: calls.slice(-20),
     toolCallCount: calls.length,
-    tokens: assistants.some((message) => message.info.tokens) ? { input, output, reasoning } : undefined,
+    tokens: assistants.some((message) => message.info.tokens)
+      ? { input, output, reasoning, ...(sawCache ? { cache: { read: cacheRead, write: cacheWrite } } : {}) }
+      : undefined,
     cost: assistants.some((message) => message.info.cost !== undefined) ? cost : undefined,
+    ...(contextUsage ? { contextUsage } : {}),
   };
+}
+
+/**
+ * Combines a context-usage observation with this turn's compaction flag and a resolved model
+ * limit into the public `TurnContextInfo`, and — when the UNROUNDED ratio reaches 0.8 — appends a
+ * `CONTEXT_HIGH` warning (last, keeping at most 3 total; existing codes are kept first) and a hint
+ * suffix (context-concurrency design §5.3). `baseHint`'s own selection/precedence is never changed
+ * by this function — the suffix is only ever appended to whichever hint the caller already chose
+ * (e.g. a response-loop or SUBMISSION_UNCONFIRMED hint keeps its own wording, with the suffix
+ * tacked on the end).
+ */
+export function buildContextResult(
+  usage: ContextUsage | undefined,
+  compacted: boolean,
+  resolved: ResolvedModelLimit | undefined,
+  baseWarnings: TurnResult['warnings'],
+  baseHint: string,
+): { context?: TurnContextInfo; warnings?: TurnResult['warnings']; hint: string } {
+  if (!usage) return { warnings: baseWarnings, hint: baseHint };
+  const usable = resolved?.usableInputTokens;
+  const context: TurnContextInfo = {
+    model: usage.model,
+    ...(usage.used !== undefined ? { used: usage.used } : {}),
+    ...(usage.peakUsed !== undefined ? { peakUsed: usage.peakUsed } : {}),
+    ...(usable !== undefined ? { usableInputTokens: usable } : {}),
+    ...(resolved && Object.keys(resolved.limit).length > 0 ? { limitSource: resolved.limitSource } : {}),
+    compacted,
+  };
+  if (usage.used === undefined || usable === undefined) return { context, warnings: baseWarnings, hint: baseHint };
+  const ratio = usage.used / usable;
+  context.ratio = Math.round(ratio * 1000) / 1000;
+  if (ratio < 0.8) return { context, warnings: baseWarnings, hint: baseHint };
+  const pct = Math.round(ratio * 100);
+  const warning = {
+    code: 'CONTEXT_HIGH' as const,
+    message: safeSlice(
+      `Last reported context usage is ${pct}% of ${usage.model}'s budget (${usage.used} of ${usable} tokens).`,
+      200,
+    ),
+  };
+  const warnings = [...(baseWarnings ?? []).slice(0, 2), warning];
+  const hint = `${baseHint} Context is nearly full; continue in a new opencode session with a self-contained prompt and opencode-end this one.` +
+    (resolved?.limitSource === 'profile'
+      ? ' If OpenCode itself has no context limit configured for this model, it will not compact proactively.'
+      : '');
+  return { context, warnings, hint };
+}
+
+/** `ContextOverflowError` final-failure hint (context-concurrency design §5.3): a prompt or
+ * session history that genuinely exceeded the model's context window (as opposed to a transient
+ * overflow OpenCode recovered from by reactive compaction, which keeps the turn completed). */
+export function contextOverflowHint(model: string): string {
+  return `The prompt or session history exceeded ${model}'s context window. Split the task, start a new session, or choose a larger-context model (opencode-info section "models").`;
 }
 
 /**
